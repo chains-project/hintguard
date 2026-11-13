@@ -26,7 +26,7 @@ def binary() -> str:
     return path
 
 
-def decide(command: str, cwd: str, timeout: float = 10.0) -> tuple[list[str], bool]:
+def decide(command: str, cwd: str, timeout: float = 5.0) -> tuple[list[str], bool]:
     """Names of the nah guards that block the command ([] when nah delegates), and whether nah's
     analysis was partial (it ran out of its evidence budget and delegated without a full check)."""
     request = json.dumps({"v": 1, "tool": "Bash", "input": {"command": command}, "cwd": cwd})
