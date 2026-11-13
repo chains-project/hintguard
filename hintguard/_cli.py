@@ -13,13 +13,21 @@ from ._hints import MAX_LEN, Hint, hint, table
 
 def verdict(command: str, cwd: str) -> tuple[list[Hint], str | None]:
     """Hints for every rule the command breaks (own rules first), and a nah error if nah failed."""
+    hints, error, _ = verdict_full(command, cwd)
+    return hints, error
+
+
+def verdict_full(command: str, cwd: str) -> tuple[list[Hint], str | None, bool]:
+    """As verdict, plus whether nah's check was partial (out of its evidence budget)."""
     rules = _rules.check(command)
     error = None
+    partial = False
     try:
-        rules += [g for g in _nah.decide(command, cwd) if g not in rules]
+        guards, partial = _nah.decide(command, cwd)
+        rules += [g for g in guards if g not in rules]
     except _nah.NahError as e:
         error = str(e)
-    return [hint(r) for r in rules], error
+    return [hint(r) for r in rules], error, partial
 
 
 def reason(hints: list[Hint]) -> str:
@@ -38,9 +46,9 @@ def cmd_hook(_: argparse.Namespace) -> int:
         return 0
     command = (payload.get("tool_input") or {}).get("command") or ""
     t = time.monotonic()
-    hints, error = verdict(command, payload.get("cwd") or os.getcwd())
+    hints, error, partial = verdict_full(command, payload.get("cwd") or os.getcwd())
     _log.record(payload.get("session_id"), payload.get("tool_use_id"), [h.rule for h in hints],
-                error is not None, (time.monotonic() - t) * 1000)
+                error is not None, (time.monotonic() - t) * 1000, partial)
     if error:
         print(f"hintguard: {error}", file=sys.stderr)
     if hints:

@@ -2,7 +2,8 @@
 
 One JSON line per hooked Bash call in ~/.local/state/hintguard/decisions.jsonl (HINTGUARD_LOG
 overrides). No command text is logged: commands can hold secrets. A line holds the time, session and
-tool-call ids, the rules that fired, whether nah failed, and the latency.
+tool-call ids, the rules that fired, whether nah failed or only checked partially (out of its
+evidence budget), and the latency.
 """
 from __future__ import annotations
 
@@ -19,10 +20,11 @@ def path() -> Path:
     return Path(os.environ.get("HINTGUARD_LOG") or Path.home() / ".local/state/hintguard/decisions.jsonl")
 
 
-def record(session: str | None, tool_use_id: str | None, rules: list[str], error: bool, ms: float) -> None:
+def record(session: str | None, tool_use_id: str | None, rules: list[str], error: bool, ms: float,
+           partial: bool = False) -> None:
     """Append one decision; never let logging break the hook."""
     line = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), "session": session,
-            "tool_use_id": tool_use_id, "rules": rules, "error": error, "ms": round(ms, 1)}
+            "tool_use_id": tool_use_id, "rules": rules, "error": error, "partial": partial, "ms": round(ms, 1)}
     try:
         p = path()
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -77,6 +79,7 @@ def stats(since: timedelta, now: datetime | None = None) -> dict[str, object]:
         "sessions": len(by_session),
         "denied": len(denied),
         "nah_errors": sum(1 for r in rows if r.get("error")),
+        "nah_partial": sum(1 for r in rows if r.get("partial")),
         "rules": dict(collections.Counter(r["rules"][0] for r in denied).most_common()),
         "after_deny": dict(after),
         "latency_ms_p50": ms[len(ms) // 2] if ms else None,

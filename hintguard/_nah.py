@@ -26,8 +26,9 @@ def binary() -> str:
     return path
 
 
-def decide(command: str, cwd: str, timeout: float = 10.0) -> list[str]:
-    """Names of the nah guards that block the command; [] when nah delegates."""
+def decide(command: str, cwd: str, timeout: float = 10.0) -> tuple[list[str], bool]:
+    """Names of the nah guards that block the command ([] when nah delegates), and whether nah's
+    analysis was partial (it ran out of its evidence budget and delegated without a full check)."""
     request = json.dumps({"v": 1, "tool": "Bash", "input": {"command": command}, "cwd": cwd})
     try:
         p = subprocess.run([binary(), "decide"], input=request, capture_output=True, text=True,
@@ -37,12 +38,16 @@ def decide(command: str, cwd: str, timeout: float = 10.0) -> list[str]:
     except OSError as e:
         raise NahError(f"cannot run nah: {e}") from e
     if p.returncode == 2:
-        return []
+        try:
+            partial = json.loads(p.stdout).get("reason") == "partial coverage"
+        except json.JSONDecodeError:
+            partial = False
+        return [], partial
     if p.returncode != 1:
         raise NahError(f"nah decide exit {p.returncode}: {(p.stderr or p.stdout).strip()[:200]}")
     body = json.loads(p.stdout)
     names = [a["name"] for a in body.get("policy_attributions", []) if a.get("name")]
-    return names or ["nah"]
+    return names or ["nah"], False
 
 
 def guards() -> dict[str, bool]:
