@@ -12,6 +12,7 @@ import os
 import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 
 def path() -> Path:
@@ -42,7 +43,7 @@ def parse_since(text: str) -> timedelta:
 def stats(since: timedelta, now: datetime | None = None) -> dict[str, object]:
     """Counts over the window, and what the agent did right after each deny in the same session."""
     cutoff = (now or datetime.now(UTC)) - since
-    rows = []
+    rows: list[dict[str, Any]] = []
     if path().exists():
         for line in path().open():
             try:
@@ -51,10 +52,10 @@ def stats(since: timedelta, now: datetime | None = None) -> dict[str, object]:
                 continue
             if datetime.fromisoformat(r["ts"]) >= cutoff:
                 rows.append(r)
-    by_session: dict[str, list[dict[str, object]]] = collections.defaultdict(list)
+    by_session: dict[str, list[dict[str, Any]]] = collections.defaultdict(list)
     for r in rows:
         by_session[str(r.get("session"))].append(r)
-    after = collections.Counter()
+    after: collections.Counter[str] = collections.Counter()
     for seq in by_session.values():
         for k, r in enumerate(seq):
             if not r["rules"]:
@@ -64,7 +65,7 @@ def stats(since: timedelta, now: datetime | None = None) -> dict[str, object]:
                 after["no_further_bash_call"] += 1
             elif not nxt["rules"]:
                 after["next_call_passed"] += 1
-            elif set(nxt["rules"]) & set(r["rules"]):  # type: ignore[arg-type]
+            elif set(nxt["rules"]) & set(r["rules"]):
                 after["denied_again_same_rule"] += 1
             else:
                 after["denied_by_another_rule"] += 1

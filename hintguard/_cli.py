@@ -8,7 +8,7 @@ import sys
 import time
 
 from . import _log, _nah, _rules
-from ._hints import Hint, hint, table
+from ._hints import MAX_LEN, Hint, hint, table
 
 
 def verdict(command: str, cwd: str) -> tuple[list[Hint], str | None]:
@@ -26,7 +26,9 @@ def reason(hints: list[Hint]) -> str:
     """The first hint is the instruction; further rules are named so the rewrite can avoid them too."""
     text = hints[0].line()
     if len(hints) > 1:
-        text += " Also breaks: " + ", ".join(h.rule for h in hints[1:]) + "."
+        more = " Also: " + ", ".join(h.rule for h in hints[1:]) + "."
+        if len(text) + len(more) <= MAX_LEN:
+            text += more
     return text
 
 
