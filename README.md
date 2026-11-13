@@ -36,6 +36,9 @@ Claude Code, `~/.claude/settings.json`:
 {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "hintguard hook"}]}]}}
 ```
 
+Fleet: `~/workspace/prototypes/agent-fleet/deploy-hintguard.py plan|apply|stats|report` installs it
+on every node that runs Claude Code and collects the usage logs.
+
 ## Usage
 
 ```console
@@ -43,11 +46,14 @@ hintguard check 'git reset --hard'      # prints the deny line, nothing if allow
 hintguard check 'rm -rf $X' --json      # {"denied": true, "rules": [...], "reason": ..., "error": null}
 hintguard hints [--json]                 # every rule with its hint
 hintguard setup [--dry-run]              # align nah's enabled guards; prints only changes
+hintguard stats [--since 7d] [--json]    # local usage: calls, denies per rule, what the agent did next
 ```
 
 `hook` reads the Claude Code PreToolUse JSON on stdin. It prints a `permissionDecision: deny` JSON on
 stdout when a rule fires, and nothing otherwise. If nah is missing or fails, hintguard prints one line on
-stderr, exits 1 (non-blocking), and its own rules still apply.
+stderr, exits 1 (non-blocking), and its own rules still apply. Each hooked call appends one line
+(time, session and tool-call ids, rules, latency; no command text) to
+`~/.local/state/hintguard/decisions.jsonl`.
 
 ## Guard set
 
