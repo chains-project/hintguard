@@ -18,7 +18,9 @@ class NahError(RuntimeError):
 
 
 def binary() -> str:
-    path = os.environ.get("HINTGUARD_NAH") or shutil.which("nah")
+    # Hooks may run with a PATH that lacks ~/.local/bin, where the fleet installs nah.
+    local = os.path.expanduser("~/.local/bin/nah")
+    path = os.environ.get("HINTGUARD_NAH") or shutil.which("nah") or (local if os.access(local, os.X_OK) else None)
     if not path:
         raise NahError("nah not found on PATH (set HINTGUARD_NAH)")
     return path
