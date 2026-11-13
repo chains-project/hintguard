@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hintguard"
+version = "0.1.0"
+description = "Deny risky agent shell commands with a crisp rewrite hint for the agent, never escalate to a human"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [{ name = "Martin Monperrus" }]
+dependencies = ["tree-sitter>=0.25", "tree-sitter-bash>=0.25"]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "mypy", "ruff"]
+
+[project.scripts]
+hintguard = "hintguard._cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hintguard"]
+
+[tool.ruff]
+line-length = 110
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true

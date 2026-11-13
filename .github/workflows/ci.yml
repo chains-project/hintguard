@@ -1,0 +1,20 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install nah v1.7.0 (release binary, sha256 pinned)
+        run: |
+          curl -fsSL -o nah.tgz https://github.com/manuelschipper/nah/releases/download/v1.7.0/nah-x86_64-unknown-linux-musl.tar.gz
+          echo "e0baa66266e3774d48eeebb6c29b0a9d4de68382f9d3d253febe10970dfd8ac3  nah.tgz" | sha256sum -c
+          mkdir -p ~/.local/bin && tar -xzf nah.tgz -C ~/.local/bin nah && echo ~/.local/bin >> $GITHUB_PATH
+      - run: pip install -e '.[dev]'
+      - run: hintguard setup
+      - run: ruff check .
+      - run: mypy hintguard
+      - run: pytest -q --cov=hintguard
