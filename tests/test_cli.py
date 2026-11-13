@@ -60,3 +60,25 @@ def test_hint_example_is_not_denied(h, monkeypatch, capsys) -> None:  # type: ig
     """Following a hint must not lead to another deny."""
     code, out, err = run(["check", h.example, "--cwd", "/tmp"], "", monkeypatch, capsys)
     assert (code, out, err) == (0, "", "")
+
+
+def test_hook_logs_without_command_text(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    log = tmp_path / "d.jsonl"
+    monkeypatch.setenv("HINTGUARD_LOG", str(log))
+    monkeypatch.setenv("HINTGUARD_NAH", "/nonexistent/nah")
+    p = json.loads(payload("rm -rf $(dirname $SECRETPATH)"))
+    for k, cmd in enumerate(["rm -rf $(dirname $SECRETPATH)", "rm -rf /tmp/x", "rm -f $A", "rm -f $A"]):
+        p.update(session_id="s1", tool_use_id=f"t{k}", tool_input={"command": cmd})
+        run(["hook"], json.dumps(p), monkeypatch, capsys)
+    text = log.read_text()
+    assert "SECRETPATH" not in text and len(text.splitlines()) == 4
+    _, out, _ = run(["stats", "--json"], "", monkeypatch, capsys)
+    s = json.loads(out)
+    assert (s["calls"], s["denied"], s["sessions"]) == (4, 3, 1)
+    assert s["after_deny"] == {"next_call_passed": 1, "denied_again_same_rule": 1, "no_further_bash_call": 1}
+
+
+def test_unknown_rule_still_denies_with_a_hint() -> None:
+    from hintguard._hints import hint
+    h = hint("guard-from-a-newer-nah")
+    assert h.line().startswith("Denied (guard-from-a-newer-nah): Rewrite the command")

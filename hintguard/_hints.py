@@ -28,5 +28,7 @@ def table() -> dict[str, Hint]:
 
 
 def hint(rule: str) -> Hint:
-    """The hint for a rule; a rule without one is a bug, caught by the tests, so fail loudly."""
-    return table()[rule]
+    """The hint for a rule. A rule without one (a guard added by a newer nah) still denies, with a
+    generic rewrite instruction; tests/test_hints.py catches it for the installed nah."""
+    return table().get(rule) or Hint(rule, f"Rewrite the command so that the {rule} rule does not apply.",
+                                     "no specific hint yet.")

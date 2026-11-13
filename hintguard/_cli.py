@@ -5,8 +5,9 @@ import argparse
 import json
 import os
 import sys
+import time
 
-from . import _nah, _rules
+from . import _log, _nah, _rules
 from ._hints import Hint, hint, table
 
 
@@ -34,7 +35,10 @@ def cmd_hook(_: argparse.Namespace) -> int:
     if payload.get("tool_name") != "Bash":
         return 0
     command = (payload.get("tool_input") or {}).get("command") or ""
+    t = time.monotonic()
     hints, error = verdict(command, payload.get("cwd") or os.getcwd())
+    _log.record(payload.get("session_id"), payload.get("tool_use_id"), [h.rule for h in hints],
+                error is not None, (time.monotonic() - t) * 1000)
     if error:
         print(f"hintguard: {error}", file=sys.stderr)
     if hints:
@@ -67,6 +71,19 @@ def cmd_hints(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stats(a: argparse.Namespace) -> int:
+    s = _log.stats(_log.parse_since(a.since))
+    if a.json:
+        print(json.dumps(s))
+    elif s["calls"]:
+        rules = ", ".join(f"{k} {v}" for k, v in s["rules"].items())  # type: ignore[attr-defined]
+        after = ", ".join(f"{k} {v}" for k, v in s["after_deny"].items())  # type: ignore[attr-defined]
+        print(f"{s['calls']} calls in {s['sessions']} sessions, {s['denied']} denied ({rules})")
+        if after:
+            print(f"after a deny: {after}")
+    return 0
+
+
 def cmd_setup(a: argparse.Namespace) -> int:
     """Enable every nah guard except DISABLED; print only what changed."""
     for name, on in _nah.guards().items():
@@ -91,6 +108,10 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("hints", help="list every rule with its hint")
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_hints)
+    s = sub.add_parser("stats", help="usage from the local decision log (no command text is logged)")
+    s.add_argument("--since", default="7d", help="window, e.g. 12h, 7d, 2w (default 7d)")
+    s.add_argument("--json", action="store_true")
+    s.set_defaults(fn=cmd_stats)
     s = sub.add_parser("setup", help="enable the nah guards hintguard expects")
     s.add_argument("--dry-run", action="store_true")
     s.set_defaults(fn=cmd_setup)
