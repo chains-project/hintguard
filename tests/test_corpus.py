@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import concurrent.futures as cf
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -19,9 +20,12 @@ CASES = [json.loads(line) for line in (Path(__file__).parent / "data" / "nah-cor
 
 
 @pytest.mark.skipif(not shutil.which("nah"), reason="nah not installed")
-def test_every_nah_block_becomes_our_hint() -> None:
+def test_every_nah_block_becomes_our_hint(monkeypatch: pytest.MonkeyPatch) -> None:
+    # This test is about mapping, not speed: give nah time even on a small CI runner.
+    decide = _nah.decide
+    monkeypatch.setattr(_nah, "decide", lambda command, cwd: decide(command, cwd, timeout=30))
     cases = [c for c in CASES if c["guard"] not in _nah.DISABLED]
-    with cf.ThreadPoolExecutor(6) as ex:
+    with cf.ThreadPoolExecutor(os.cpu_count() or 2) as ex:
         verdicts = list(ex.map(lambda c: _cli.verdict(c["command"], "/tmp"), cases))
     errors = [(c["id"], e) for c, (_, e) in zip(cases, verdicts) if e]
     assert errors == []
