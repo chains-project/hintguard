@@ -7,9 +7,9 @@
 # Every hint has one, except "drop this step" hints.
 
 [rm-unresolvable]
-rewrite = "Delete only literal paths: put throwaway files in the scratchpad and skip the cleanup, or rm a literal absolute path."
+rewrite = "Delete only literal paths: write throwaway files to a temporary directory and skip the cleanup, or rm a literal path."
 why = "the rm target is only known at run time."
-example = "rm -rf /tmp/claude-1001/build-cache"
+example = "rm -rf ./build-cache"
 
 [db-destroy]
 rewrite = "Work on a copy: dump the data first, or use a filtered DELETE, a new table, or a local database."
@@ -51,7 +51,7 @@ why = "it deletes or rewrites the whole home folder."
 example = "rm -rf ~/workspace/old-build"
 
 [fs-outside-workspace-delete]
-rewrite = "Delete only inside the project or the scratchpad, with a literal path."
+rewrite = "Delete only inside the project or a temporary directory, with a literal path."
 why = "it deletes recursively outside the project."
 example = "rm -rf ./build"
 
@@ -76,17 +76,17 @@ why = "it changes the shell profile."
 example = "FOO=1 ./run.sh"
 
 [fs-startup-management]
-rewrite = "Use ~/bin/sched to run something later or regularly, instead of systemctl, crontab or launchctl."
+rewrite = "Write the job as a script in the project and leave system schedules and services unchanged."
 why = "it changes what starts at boot or on a schedule."
-example = "~/bin/sched add --project demo --cron '0 8 * * *' -d 'daily job' -- ./job.sh"
+example = "printf '#!/bin/sh\\n./build.sh\\n' > job.sh"
 
 [fs-startup-persistence]
-rewrite = "Use ~/bin/sched for scheduled jobs; leave startup and autostart files untouched."
+rewrite = "Write the job as a script in the project; leave startup, autostart and schedule files untouched."
 why = "it changes startup, autostart or schedule files."
-example = "~/bin/sched list --project demo"
+example = "printf '#!/bin/sh\\n./build.sh\\n' > job.sh"
 
 [fs-system-tree]
-rewrite = "Name a specific path inside the project or the scratchpad instead of a system tree."
+rewrite = "Name a specific path inside the project or a temporary directory instead of a system tree."
 why = "it targets / or a system tree."
 example = "rm -rf ./tmp-output"
 
@@ -151,7 +151,7 @@ why = "it deletes a release, secret or other hosted resource."
 [git-rewrite-force]
 rewrite = "Rewrite history in a fresh clone, without --force, and compare."
 why = "it rewrites history and bypasses backups."
-example = "git clone --mirror . /tmp/claude-1001/rewrite.git"
+example = "git clone --mirror . ../rewrite.git"
 
 [git-worktree-discard]
 rewrite = "Run git stash first, then switch branches or remove the worktree without -f."
@@ -164,7 +164,7 @@ why = "it resets all container state."
 example = "podman rm old-container"
 
 [infra-container-volume-delete]
-rewrite = "Run docker compose down without -v, or remove one named volume."
+rewrite = "Stop the containers without removing their volumes, or remove one named volume."
 why = "it deletes container volumes and their data."
 example = "docker compose down"
 
@@ -194,14 +194,14 @@ why = "it unpublishes a released package."
 example = "npm deprecate pkg@1.0.0 'use 1.0.1'"
 
 [secrets-credentials]
-rewrite = "Use the tool that consumes the key, such as ssh or git, instead of reading key files."
+rewrite = "Let the program that needs the key use it directly instead of reading key files."
 why = "it reads or moves private keys or credentials."
 example = "ssh -T git@github.com"
 
 [secrets-env]
-rewrite = "Let the program read .env itself, for example with python-dotenv; never print or source .env in the shell."
+rewrite = "Let the program read .env itself; never print or source .env in the shell."
 why = "it prints secret values."
-example = "python3 -c 'import dotenv; print(sorted(dotenv.dotenv_values()))'"
+example = "python3 app.py"
 
 [secrets-exfil]
 rewrite = "Send only the non-secret fields you need, never .env or the environment."
@@ -227,7 +227,7 @@ why = "it deletes a whole backup repository."
 example = "restic snapshots"
 
 [storage-recursive-delete]
-rewrite = "Sync without --delete, or delete single objects by name."
+rewrite = "Sync without deleting at the destination, or delete single objects by name."
 why = "it deletes remote data in bulk."
 example = "rsync -a ./out/ host:/srv/out/"
 

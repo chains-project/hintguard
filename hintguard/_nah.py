@@ -6,9 +6,9 @@ import os
 import shutil
 import subprocess
 
-# All 48 built-in nah guards except those that flag routine work for this operator
-# (measured on 10k past Bash calls, see bash-safety-analysis-study): pushes to main, scratchpad
-# cleanup, `git pull --rebase`, branch deletion, service restarts on own hosts.
+# All 48 built-in nah guards except five that mostly flag routine coding-agent work, measured on
+# 10,000 real Claude Code Bash calls: pushes to main, cleanup of temporary directories,
+# `git pull --rebase`, branch deletion, and service restarts.
 DISABLED = ("git-protected-push", "fs-outside-workspace-delete", "git-history-rewrite",
             "git-ref-delete", "sys-service-stop")
 
@@ -18,7 +18,7 @@ class NahError(RuntimeError):
 
 
 def binary() -> str:
-    # Hooks may run with a PATH that lacks ~/.local/bin, where the fleet installs nah.
+    # Hooks may run with a PATH that lacks ~/.local/bin, a common place for nah's release binary.
     local = os.path.expanduser("~/.local/bin/nah")
     path = os.environ.get("HINTGUARD_NAH") or shutil.which("nah") or (local if os.access(local, os.X_OK) else None)
     if not path:

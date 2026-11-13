@@ -1,33 +1,65 @@
 # hintguard
 
-A PreToolUse hook for coding agents that denies risky shell commands with **one crisp line telling
-the agent how to rewrite the command**. It never asks a human: no permission prompt, no "ask the
-user", no approval code.
+A pre-tool-use hook for coding agents (Claude Code, Codex) that denies risky shell commands with
+**one line telling the agent how to rewrite the command**. It never asks a human: no permission
+prompt, no "ask the user", no approval code. The agent reads the line as the tool's error and
+rewrites the command itself.
 
 ```text
+$ hintguard check 'git reset --hard HEAD~1'
 Denied (git-hard-reset): Run git stash first, or use git reset --keep, or restore single files. Why: it discards uncommitted changes.
+
+$ hintguard check 'rm -rf $(dirname $T)'
+Denied (rm-unresolvable): Delete only literal paths: write throwaway files to a temporary directory and skip the cleanup, or rm a literal path. Why: the rm target is only known at run time.
+
+$ hintguard check 'ls -la'          # allowed: no output
 ```
 
-Detection comes from [nah](https://github.com/manuelschipper/nah) (unforked, called through
-`nah decide`) plus hintguard's own rules on the tree-sitter-bash syntax tree, for what nah does not
-see, such as `rm -rf $(dirname $T)`. The wording is hintguard's: `hintguard/hints.toml` has one hint per
-nah guard and per own rule.
+## Why
 
-## Design rules (enforced by `tests/test_hints.py`)
+Coding agents stop and ask the operator before risky commands. In unattended sessions nobody answers,
+and in attended ones the operator approves without reading. Existing guards block with messages
+written for a human ("ask the user for explicit permission", "approve with allow-once <code>"), or
+bury the advice under tooling. hintguard keeps the detection and replaces the message with a short
+rewrite instruction for the agent.
 
-- Every rule that can deny has a hint.
-- A hint starts with an imperative verb, has a reason of at most 12 words, and fits on one line of at
-  most 200 characters.
-- A hint never mentions a person: user, operator, approval, permission, manual steps.
-- A hint gives a concrete `example` command, or says to drop the step when no safe variant exists.
-- The example is not denied by hintguard itself, so following a hint never leads to another deny.
+## How it works
+
+- **Detection.** [nah](https://github.com/manuelschipper/nah) decides, through `nah decide`. nah is a
+  deterministic guard that parses each command into its effects. hintguard calls it unchanged and adds
+  its own rules on the [tree-sitter-bash](https://github.com/tree-sitter/tree-sitter-bash) syntax tree
+  for what nah cannot see: nah's extension guards never receive commands with unresolved expansions,
+  such as `rm -rf $(dirname $T)`.
+- **Wording.** [`hintguard/hints.toml`](hintguard/hints.toml) has one hint per nah guard and per own rule:
+  a rewrite instruction, a short reason, and an example command that follows the hint.
+- **Output.** A deny is the standard PreToolUse JSON (`permissionDecision: deny`), which Claude Code and
+  Codex both accept. When nothing fires, hintguard prints nothing.
+
+## Design rules, enforced by the tests
+
+[`tests/test_hints.py`](tests/test_hints.py) fails if a hint breaks any of these:
+
+- every rule that can deny has a hint, including every guard of the installed nah;
+- the rewrite starts with an imperative verb, the reason has at most 12 words, and the whole line fits
+  in 200 characters;
+- no hint mentions a person: user, operator, approval, permission, manual steps;
+- the hint text names a generic fix, not a local path or site-specific tool;
+- a hint gives an example command, or says to drop the step when no safe variant exists;
+- hintguard does not deny the example itself ([`tests/test_cli.py`](tests/test_cli.py)), so following a
+  hint never leads to another deny.
+
+[`tests/test_corpus.py`](tests/test_corpus.py) replays nah's own block cases (5,562 in its default Linux
+context, minus those of the five disabled guards) and checks that each block comes out as one of our hints.
 
 ## Install
 
+Python 3.12 or later, and nah 1.7.0 on `PATH` (or in `~/.local/bin`, or named by `HINTGUARD_NAH`):
+
 ```console
-uv tool install /path/to/hintguard        # or: pip install -e .
-# nah v1.7.0 on PATH (release binary), or HINTGUARD_NAH=/path/to/nah
-hintguard setup                            # enable the nah guards hintguard expects (43 of 48)
+pip install git+https://github.com/chains-project/hintguard
+curl -fsSLO https://github.com/manuelschipper/nah/releases/download/v1.7.0/nah-x86_64-unknown-linux-musl.tar.gz
+tar -xzf nah-x86_64-unknown-linux-musl.tar.gz nah && install -m 755 nah ~/.local/bin/nah
+hintguard setup        # enable the nah guards hintguard expects (43 of 48)
 ```
 
 Claude Code, `~/.claude/settings.json`:
@@ -36,31 +68,45 @@ Claude Code, `~/.claude/settings.json`:
 {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "hintguard hook"}]}]}}
 ```
 
-Fleet: `~/workspace/prototypes/agent-fleet/deploy-hintguard.py plan|apply|stats|report` installs it
-on every node that runs Claude Code and collects the usage logs.
+Codex, `~/.codex/hooks.json` (same entry). Then trust the hook once in Codex's `/hooks` view:
+
+```json
+{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "/absolute/path/to/hintguard hook"}]}]}}
+```
 
 ## Usage
 
 ```console
-hintguard check 'git reset --hard'      # prints the deny line, nothing if allowed
-hintguard check 'rm -rf $X' --json      # {"denied": true, "rules": [...], "reason": ..., "error": null}
-hintguard hints [--json]                 # every rule with its hint
-hintguard setup [--dry-run]              # align nah's enabled guards; prints only changes
-hintguard stats [--since 7d] [--json]    # local usage: calls, denies per rule, what the agent did next
+hintguard check CMD [--cwd DIR] [--json]   # dry-run one command: the deny line, or nothing
+hintguard hook                              # PreToolUse hook: hook JSON on stdin, deny JSON on stdout
+hintguard hints [--json]                    # every rule with its hint
+hintguard setup [--dry-run]                 # align nah's enabled guards; prints only what changed
+hintguard stats [--since 7d] [--json]       # local usage: calls, denies per rule, what the agent did next
 ```
 
-`hook` reads the Claude Code PreToolUse JSON on stdin. It prints a `permissionDecision: deny` JSON on
-stdout when a rule fires, and nothing otherwise. If nah is missing or fails, hintguard prints one line on
-stderr, exits 1 (non-blocking), and its own rules still apply. Each hooked call appends one line
-(time, session and tool-call ids, rules, latency; no command text) to
-`~/.local/state/hintguard/decisions.jsonl`.
+If nah is missing, fails, or takes more than 5 s, hintguard prints one line on stderr and lets the
+command through (exit 1, which Claude Code treats as non-blocking); its own rules still apply. Each
+hooked call appends one line to `~/.local/state/hintguard/decisions.jsonl` (`HINTGUARD_LOG`
+overrides): time, session and tool-call ids, rules, latency, and whether nah checked only partially.
+The command text is never logged.
 
 ## Guard set
 
-All 48 nah guards except five that flag routine work in our trajectories (10,000 sampled calls, see
-`bash-safety-analysis-study`): `git-protected-push`, `fs-outside-workspace-delete`,
-`git-history-rewrite`, `git-ref-delete`, `sys-service-stop`.
+All 48 nah guards except five that mostly flag routine agent work. On 10,000 real Claude Code Bash
+calls, they flagged pushes to `main` (`git-protected-push`), cleanup of temporary directories
+(`fs-outside-workspace-delete`), `git pull --rebase` (`git-history-rewrite`), branch deletion
+(`git-ref-delete`) and service restarts (`sys-service-stop`). On the same calls hintguard denies 1.6%.
+
+## Development
+
+```console
+pip install -e '.[dev]'
+ruff check . && mypy hintguard && pytest
+```
+
+Tests that need nah are skipped when it is not installed; CI installs nah 1.7.0.
 
 ## License
 
-MIT. `tests/data/nah-corpus/` is an excerpt of nah's corpus, MIT, Copyright (c) 2026 Manuel Schipper.
+MIT. [`tests/data/nah-corpus/`](tests/data/nah-corpus/) is an excerpt of nah's corpus, MIT,
+Copyright (c) 2026 Manuel Schipper.

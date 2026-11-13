@@ -16,8 +16,10 @@ HUMAN = re.compile(r"\b(user|operator|human|admin|owner|manual(ly)?|approv\w*|pe
                    r"ask|confirm\w*|contact|request|review(er)?|someone|(have|let|tell) them)\b", re.IGNORECASE)
 VERBS = {"Archive", "Bound", "Check", "Delete", "Deprecate", "Do", "Download", "Drop", "Keep", "Leave",
          "Let", "Merge", "Name", "Push", "Remove", "Restart", "Retype", "Rewrite", "Run", "Save", "Send",
-         "Set", "Spell", "Sync", "Target", "Use", "Work", "Write"}
+         "Set", "Spell", "Stop", "Sync", "Target", "Use", "Work", "Write"}
 DROP = "drop this step"
+# Hint text must hold on any machine: no home-relative or absolute paths (examples may use them).
+LOCAL = re.compile(r"~/|\$HOME|(?<![\w.])/(home|Users|opt|srv|tmp)/")
 
 
 def corpus_guards() -> set[str]:
@@ -48,6 +50,7 @@ def test_hint_is_crisp_and_agent_only(h) -> None:  # type: ignore[no-untyped-def
     assert h.rewrite.endswith(".") and h.why.endswith(".")
     assert len(h.why.split()) <= 12
     assert h.example or DROP in h.rewrite.lower(), "a hint proposes a concrete command, or says to drop the step"
+    assert not LOCAL.search(h.rewrite + " " + h.why), "hint text names generic fixes, not local paths"
 
 
 def test_linter_catches_operator_talk() -> None:
@@ -57,3 +60,5 @@ def test_linter_catches_operator_talk() -> None:
            "the user can approve it with dcg allow-once"]
     assert all(HUMAN.search(b) for b in bad)
     assert not HUMAN.search("Run git stash first, or use git reset --keep, or restore single files.")
+    assert LOCAL.search("Use ~/bin/sched to run jobs.") and LOCAL.search("rm -rf /tmp/claude-1001/x")
+    assert not LOCAL.search("rm -rf ./build-cache") and not LOCAL.search("git clone --mirror . ../rewrite.git")

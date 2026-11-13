@@ -6,6 +6,7 @@ import json
 import os
 import sys
 import time
+from importlib.metadata import version
 
 from . import _log, _nah, _rules
 from ._hints import MAX_LEN, Hint, hint, table
@@ -107,6 +108,7 @@ def cmd_setup(a: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="hintguard", description=__doc__)
+    p.add_argument("--version", action="version", version=f"hintguard {version('hintguard')}")
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("hook", help="PreToolUse hook: Claude Code JSON on stdin, deny JSON on stdout")
     s.set_defaults(fn=cmd_hook)

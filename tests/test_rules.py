@@ -19,7 +19,7 @@ DYNAMIC_RM = [
 ]
 LITERAL = [
     "rm -rf build",
-    "rm -rf /tmp/claude-1001/x",
+    "rm -rf /tmp/build/x",
     "rm -f -- a.txt b.txt",
     "grep -rm $x file",
     "echo $x; rm a",
