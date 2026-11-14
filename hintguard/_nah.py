@@ -26,9 +26,27 @@ def binary() -> str:
     return path
 
 
+# nah stops on a wall-clock deadline when the host is loaded and then delegates even plain
+# `git reset --hard` (13% of calls on a 4-core host at load 4.6, 2026-11-14). A rerun usually finishes
+# in time. Other partial results ("analysis is incomplete" on complex commands) are deterministic: a
+# rerun gives the same, so only the deadline case is retried.
+DEADLINE = "deadline-exceeded"
+DEADLINE_TRIES = 3
+
+
 def decide(command: str, cwd: str, timeout: float = 5.0) -> tuple[list[str], bool]:
     """Names of the nah guards that block the command ([] when nah delegates), and whether nah's
-    analysis was partial (it ran out of its evidence budget and delegated without a full check)."""
+    analysis was partial (it delegated without a full check). A delegation caused by nah's own
+    evaluation deadline is retried, up to DEADLINE_TRIES runs in all."""
+    for _ in range(DEADLINE_TRIES):
+        guards, partial, deadline = _decide_once(command, cwd, timeout)
+        if guards or not deadline:
+            break
+    return guards, partial
+
+
+def _decide_once(command: str, cwd: str, timeout: float) -> tuple[list[str], bool, bool]:
+    """One `nah decide`: (blocking guards, partial, delegated on the evaluation deadline)."""
     request = json.dumps({"v": 1, "tool": "Bash", "input": {"command": command}, "cwd": cwd})
     try:
         p = subprocess.run([binary(), "decide"], input=request, capture_output=True, text=True,
@@ -42,12 +60,12 @@ def decide(command: str, cwd: str, timeout: float = 5.0) -> tuple[list[str], boo
             partial = json.loads(p.stdout).get("reason") == "partial coverage"
         except json.JSONDecodeError:
             partial = False
-        return [], partial
+        return [], partial, partial and DEADLINE in p.stderr
     if p.returncode != 1:
         raise NahError(f"nah decide exit {p.returncode}: {(p.stderr or p.stdout).strip()[:200]}")
     body = json.loads(p.stdout)
     names = [a["name"] for a in body.get("policy_attributions", []) if a.get("name")]
-    return names or ["nah"], False
+    return names or ["nah"], False, False
 
 
 def guards() -> dict[str, bool]:

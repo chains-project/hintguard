@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "hintguard"
-version = "0.2.0"
+version = "0.2.1"
 description = "Deny risky agent shell commands with a crisp rewrite hint for the agent, never escalate to a human"
 readme = "README.md"
 license = "MIT"

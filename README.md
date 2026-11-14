@@ -87,7 +87,9 @@ hintguard stats [--since 7d] [--json]       # local usage: calls, denies per rul
 ```
 
 If nah is missing, fails, or takes more than 5 s, hintguard prints one line on stderr and lets the
-command through (exit 1, which Claude Code treats as non-blocking); its own rules still apply. Each
+command through (exit 1, which Claude Code treats as non-blocking); its own rules still apply. When
+nah delegates because its evaluation deadline ran out (a loaded host), hintguard asks again, up to
+three runs in all; a partial check for other reasons (a command nah cannot fully analyze) is final. Each
 hooked call appends one line to `~/.local/state/hintguard/decisions.jsonl` (`HINTGUARD_LOG`
 overrides): time, session and tool-call ids, rules, latency, and whether nah checked only partially.
 The command text is never logged.

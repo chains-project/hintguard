@@ -2,8 +2,8 @@
 
 One JSON line per hooked Bash call in ~/.local/state/hintguard/decisions.jsonl (HINTGUARD_LOG
 overrides). No command text is logged: commands can hold secrets. A line holds the time, session and
-tool-call ids, the rules that fired, whether nah failed or only checked partially (out of its
-evidence budget), and the latency.
+tool-call ids, the rules that fired, whether nah failed or only checked partially (its analysis
+incomplete, or stopped by its deadline), and the latency.
 """
 from __future__ import annotations
 
