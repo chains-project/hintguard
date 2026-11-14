@@ -11,6 +11,9 @@ from importlib.metadata import version
 from . import _log, _nah, _rules
 from ._hints import MAX_LEN, Hint, hint, table
 
+# Tools whose input `command` runs in a shell: Bash, and Monitor (a background shell watch).
+SHELL_TOOLS = ("Bash", "Monitor")
+
 
 def verdict(command: str, cwd: str) -> tuple[list[Hint], str | None]:
     """Hints for every rule the command breaks (own rules first), and a nah error if nah failed."""
@@ -43,7 +46,7 @@ def reason(hints: list[Hint]) -> str:
 
 def cmd_hook(_: argparse.Namespace) -> int:
     payload = json.load(sys.stdin)
-    if payload.get("tool_name") != "Bash":
+    if payload.get("tool_name") not in SHELL_TOOLS:
         return 0
     command = (payload.get("tool_input") or {}).get("command") or ""
     t = time.monotonic()

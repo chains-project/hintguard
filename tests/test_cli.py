@@ -46,6 +46,13 @@ def test_hook_ignores_other_tools(monkeypatch, capsys) -> None:  # type: ignore[
     assert run(["hook"], payload("rm -rf $X", tool="Read"), monkeypatch, capsys) == (0, "", "")
 
 
+def test_hook_checks_monitor_commands(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("HINTGUARD_NAH", "/nonexistent/nah")
+    code, out, _ = run(["hook"], payload("while pgrep -f 'job.sh'; do sleep 9; done", tool="Monitor"),
+                       monkeypatch, capsys)
+    assert code == 0 and "Denied (pgrep-self-match):" in out
+
+
 def test_own_rule_works_without_nah(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("HINTGUARD_NAH", "/nonexistent/nah")
     code, out, err = run(["hook"], payload("rm -rf $(dirname $T)"), monkeypatch, capsys)

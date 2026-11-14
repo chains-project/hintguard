@@ -29,7 +29,8 @@ rewrite instruction for the agent.
   deterministic guard that parses each command into its effects. hintguard calls it unchanged and adds
   its own rules on the [tree-sitter-bash](https://github.com/tree-sitter/tree-sitter-bash) syntax tree
   for what nah cannot see: nah's extension guards never receive commands with unresolved expansions,
-  such as `rm -rf $(dirname $T)`.
+  such as `rm -rf $(dirname $T)`, and nah has no notion of a wait that never ends, such as
+  `while pgrep -f job.sh; do sleep 30; done` (`pgrep -f` matches the `sh -c` running it).
 - **Wording.** [`hintguard/hints.toml`](hintguard/hints.toml) has one hint per nah guard and per own rule:
   a rewrite instruction, a short reason, and an example command that follows the hint.
 - **Output.** A deny is the standard PreToolUse JSON (`permissionDecision: deny`), which Claude Code and
@@ -65,10 +66,11 @@ hintguard setup        # enable the nah guards hintguard expects (43 of 48)
 Claude Code, `~/.claude/settings.json`:
 
 ```json
-{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "hintguard hook"}]}]}}
+{"hooks": {"PreToolUse": [{"matcher": "Bash|Monitor", "hooks": [{"type": "command", "command": "hintguard hook"}]}]}}
 ```
 
-Codex, `~/.codex/hooks.json` (same entry). Then trust the hook once in Codex's `/hooks` view:
+`Monitor` (a background shell watch) runs a shell command too; hintguard checks both tools.
+Codex, `~/.codex/hooks.json` (matcher `Bash`). Then trust the hook once in Codex's `/hooks` view:
 
 ```json
 {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "/absolute/path/to/hintguard hook"}]}]}}

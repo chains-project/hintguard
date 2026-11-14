@@ -1,10 +1,12 @@
 """hintguard's own static rules, on the tree-sitter-bash syntax tree.
 
-They cover what nah cannot see: its custom guards never receive commands with unresolved expansions.
+They cover what nah cannot see: its custom guards never receive commands with unresolved expansions,
+and it has no notion of a wait that can never end.
 """
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Iterator
 
 import tree_sitter_bash
@@ -80,7 +82,39 @@ def rm_unresolvable(tree_root: Node) -> bool:
     return False
 
 
-RULES = {"rm-unresolvable": rm_unresolvable}
+# `pgrep -f PAT` skips only itself, not the `sh -c` running it, whose argv holds PAT: a wait on it never
+# ends. A pgrep that opens a condition (after while/until/do/||/&&, maybe negated) inside a shell loop or
+# a `cmd:` condition (wake-up tools run those in `sh -c`), whose pattern read as a regex matches the
+# command itself. `'[x]yz'` cannot match itself and passes. A pgrep inside a quoted argument (`"pgrep …"`
+# typed into another tool) does not open a condition here and passes.
+_PGREP = re.compile(r"(\b(while|until|do)\s+|\|\||&&)\s*(!\s*)?pgrep\b(?P<opts>(\s+-\w+)*)\s+"
+                    r"(?P<pat>'[^']*'|\"[^\"]*\"|[^\s;|&)]+)")
+_WAITS = re.compile(r"\b(while|until)\b.*[;\n]\s*do\b.*[;\n]\s*done\b|\bcmd:", re.DOTALL)
+
+
+def self_matching_pgrep(command: str) -> str | None:
+    """The first `pgrep -f` pattern of a wait in `command` that matches `command` itself, else None."""
+    if not _WAITS.search(command):
+        return None
+    for m in _PGREP.finditer(command):
+        if not any("f" in o for o in m.group("opts").split()):
+            continue
+        pat = m.group("pat")
+        raw = pat[1:-1] if pat[0] in "'\"" else pat
+        try:
+            hit = re.search(raw, command) is not None
+        except re.error:
+            hit = raw in command
+        if hit:
+            return pat
+    return None
+
+
+def pgrep_self_match(tree_root: Node) -> bool:
+    return self_matching_pgrep(_text(tree_root)) is not None
+
+
+RULES = {"rm-unresolvable": rm_unresolvable, "pgrep-self-match": pgrep_self_match}
 
 
 def check(command: str) -> list[str]:

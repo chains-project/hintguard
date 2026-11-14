@@ -16,7 +16,7 @@ HUMAN = re.compile(r"\b(user|operator|human|admin|owner|manual(ly)?|approv\w*|pe
                    r"ask|confirm\w*|contact|request|review(er)?|someone|(have|let|tell) them)\b", re.IGNORECASE)
 VERBS = {"Archive", "Bound", "Check", "Delete", "Deprecate", "Do", "Download", "Drop", "Keep", "Leave",
          "Let", "Merge", "Name", "Push", "Remove", "Restart", "Retype", "Rewrite", "Run", "Save", "Send",
-         "Set", "Spell", "Stop", "Sync", "Target", "Use", "Work", "Write"}
+         "Set", "Spell", "Stop", "Sync", "Target", "Use", "Wait", "Work", "Write"}
 DROP = "drop this step"
 # Hint text must hold on any machine: no home-relative or absolute paths (examples may use them).
 LOCAL = re.compile(r"~/|\$HOME|(?<![\w.])/(home|Users|opt|srv|tmp)/")

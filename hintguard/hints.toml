@@ -11,6 +11,11 @@ rewrite = "Delete only literal paths: write throwaway files to a temporary direc
 why = "the rm target is only known at run time."
 example = "rm -rf ./build-cache"
 
+[pgrep-self-match]
+rewrite = "Wait on the PID (wait $pid, kill -0 $pid) or the output file, or bracket one letter: pgrep -f '[j]ob.sh'."
+why = "pgrep -f matches the shell running it: the wait never ends."
+example = "while pgrep -f '[j]ob.sh' >/dev/null; do sleep 30; done"
+
 [db-destroy]
 rewrite = "Work on a copy: dump the data first, or use a filtered DELETE, a new table, or a local database."
 why = "it destroys live database data."
