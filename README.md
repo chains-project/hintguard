@@ -31,7 +31,7 @@ rewrite instruction for the agent.
   for what nah cannot see: nah's extension guards never receive commands with unresolved expansions,
   such as `rm -rf $(dirname $T)`; nah has no notion of a wait that never ends, such as
   `while pgrep -f job.sh; do sleep 30; done` (`pgrep -f` matches the `sh -c` running it), nor of a
-  `pkill -f job.sh` that kills that same shell. One rule reads the repository: before a `git commit`
+  `pkill -f job.sh` (or `kill $(pgrep -f job.sh)`) that kills that same shell. One rule reads the repository: before a `git commit`
   it runs `git submodule status` and denies a commit that would record a moved submodule checkout
   (`commit -a`, `add -A`) or the pointer deletion of a lost submodule directory still in `.gitmodules`.
 - **Wording.** [`hintguard/hints.toml`](hintguard/hints.toml) has one hint per nah guard and per own rule:

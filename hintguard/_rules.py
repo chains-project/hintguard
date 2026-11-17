@@ -139,14 +139,14 @@ def _command_args(cmd: Node, program: str) -> list[Node] | None:
     return None
 
 
-# pkill options that take a value as the next argument.
+# pkill/pgrep options that take a value as the next argument.
 _PKILL_VALUED = {"-d", "-g", "-G", "-P", "-s", "-t", "-u", "-U", "-F", "--signal", "--ns", "--nslist",
                  "--pidfile", "--delimiter", "--pgroup", "--group", "--parent", "--session", "--terminal",
                  "--euid", "--uid", "-O", "--older"}
 
 
 def _pkill_full_pattern(args: list[Node]) -> str | None:
-    """The literal pattern of a `pkill -f` (full command line match); None if no -f or not literal."""
+    """The literal pattern of a `pkill -f` or `pgrep -f` (full command line match); None if no -f or not literal."""
     full, pattern, skip = False, None, False
     for arg in args:
         text = _text(arg)
@@ -165,12 +165,29 @@ def _pkill_full_pattern(args: list[Node]) -> str | None:
     return pattern if full and pattern else None
 
 
-def self_matching_pkill(command: str, root: Node | None = None) -> str | None:
-    """The first literal `pkill -f` pattern in `command` that, read as a regex, matches `command` itself.
+def _feeds_kill(pgrep: Node) -> bool:
+    """Whether this pgrep's output becomes kill's targets: `kill $(pgrep …)` or `pgrep … | xargs kill`."""
+    node = pgrep
+    while node.parent is not None:
+        parent = node.parent
+        if parent.type == "pipeline":
+            later = [c for c in parent.children if c.start_byte > node.start_byte and c.type == "command"]
+            if any((a := _command_args(c, "xargs")) is not None
+                   and any(os.path.basename(_text(x)) == "kill" for x in a) for c in later):
+                return True
+        if node.type == "command_substitution" and parent.type == "command":
+            return _command_args(parent, "kill") is not None
+        node = parent
+    return False
 
-    The agent's shell runs the command as `bash -c '<command>'`: pkill skips only itself, so a pattern
-    that matches the command text kills the shell running it (checked: `pgrep -af X` run by Claude Code
-    prints that `bash -c` line). `'[j]ob.sh'` cannot match itself and passes.
+
+def self_matching_pkill(command: str, root: Node | None = None) -> str | None:
+    """The first literal `-f` pattern of a kill in `command` that, read as a regex, matches `command` itself.
+
+    The kills are `pkill -f PAT`, `kill $(pgrep -f PAT)` and `pgrep -f PAT | xargs kill`. The agent's shell
+    runs the command as `bash -c '<command>'`: pkill and pgrep skip only themselves, so a pattern that
+    matches the command text kills the shell running it (checked: `pgrep -af X` run by Claude Code prints
+    that `bash -c` line). `'[j]ob.sh'` cannot match itself and passes.
     """
     root = root if root is not None else _PARSER.parse(command.encode()).root_node
     for cmd in _walk(root):
@@ -180,6 +197,8 @@ def self_matching_pkill(command: str, root: Node | None = None) -> str | None:
             if (pat := self_matching_pkill(command, _PARSER.parse(script.encode()).root_node)) is not None:
                 return pat
         args = _command_args(cmd, "pkill")
+        if args is None and (args := _command_args(cmd, "pgrep")) is not None and not _feeds_kill(cmd):
+            args = None
         if args is None or (pat := _pkill_full_pattern(args)) is None:
             continue
         try:

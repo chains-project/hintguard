@@ -95,6 +95,11 @@ SELF_KILLING_PKILL = [
     "cd /tmp && pkill -f \"worker --id 3\" || true",
     "bash -c 'pkill -f watcher.py'",
     "pkill -f -- 'train.py'",
+    "kill $(pgrep -f 'python train.py')",
+    "kill -9 $(pgrep -f train.py) 2>/dev/null; echo done",
+    "pgrep -f 'bench run' | xargs kill",
+    "pgrep -af bench.sh | xargs -r kill -TERM",
+    "sudo kill `pgrep -f server.js`",
 ]
 NOT_SELF_KILLING_PKILL = [
     "pkill -f '[t]rain.py'",
@@ -105,7 +110,13 @@ NOT_SELF_KILLING_PKILL = [
     "pkill -f \"$PATTERN\"",  # only known at run time
     "echo 'never run pkill -f train.py'",  # quoted, not run
     "pkill -f 'a.(py|sh)'",  # this regex does not match its own text
-    "pkill -f '^python3 train\\.py$'",  # anchored: cannot match the shell's longer command line
+    "pkill -f '^python3 train\\.py$'",
+    "kill $(pgrep -f '[t]rain.py')",
+    "pgrep -f 'bench run' | wc -l",  # counted, not killed
+    "pgrep -f train.py",  # a one-shot listing
+    "echo $(pgrep -f train.py)",
+    "pgrep -f train.py | xargs ps -o pid,cmd -p",
+  # anchored: cannot match the shell's longer command line
 ]
 
 
@@ -128,3 +139,10 @@ def test_reference_pkill_kills_its_own_shell() -> None:
                            check=False)
         return "alive" in r.stdout
     assert not survives("zz-selfkill-probe") and survives("[z]z-selfkill-probe")
+
+    def survives_kill(snippet: str) -> bool:
+        r = subprocess.run(["sh", "-c", f"{snippet}; echo alive"], capture_output=True, text=True, check=False)
+        return "alive" in r.stdout
+    assert not survives_kill("kill $(pgrep -f zz-selfkill-probe2)")
+    assert not survives_kill("pgrep -f zz-selfkill-probe3 | xargs kill")
+    assert survives_kill("kill $(pgrep -f '[z]z-selfkill-probe4') 2>/dev/null")

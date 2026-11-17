@@ -18,7 +18,7 @@ example = "while pgrep -f '[j]ob.sh' >/dev/null; do sleep 30; done"
 
 [pkill-self-match]
 rewrite = "Use the PID (kill $pid) or bracket one letter of the pattern: pkill -f '[j]ob.sh'."
-why = "pkill -f matches the shell running it and kills it."
+why = "the -f pattern matches the shell running it, which gets killed."
 example = "pkill -f '[j]ob.sh'"
 
 [submodule-drift]
