@@ -23,7 +23,7 @@ def verdict(command: str, cwd: str) -> tuple[list[Hint], str | None]:
 
 def verdict_full(command: str, cwd: str) -> tuple[list[Hint], str | None, bool]:
     """As verdict, plus whether nah's check was partial (it delegated without a full analysis)."""
-    rules = _rules.check(command)
+    rules = _rules.check(command, cwd)
     error = None
     partial = False
     try:

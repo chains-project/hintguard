@@ -16,6 +16,16 @@ rewrite = "Wait on the PID (wait $pid, kill -0 $pid) or the output file, or brac
 why = "pgrep -f matches the shell running it: the wait never ends."
 example = "while pgrep -f '[j]ob.sh' >/dev/null; do sleep 30; done"
 
+[pkill-self-match]
+rewrite = "Use the PID (kill $pid) or bracket one letter of the pattern: pkill -f '[j]ob.sh'."
+why = "pkill -f matches the shell running it and kills it."
+example = "pkill -f '[j]ob.sh'"
+
+[submodule-drift]
+rewrite = "Run git submodule status, stage intended pointers by path (git add/rm PATH), commit without -a."
+why = "the commit would record or drop a submodule pointer by accident."
+example = "git add src/a.py && git commit -m 'fix a'"
+
 [db-destroy]
 rewrite = "Work on a copy: dump the data first, or use a filtered DELETE, a new table, or a local database."
 why = "it destroys live database data."

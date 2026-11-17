@@ -83,3 +83,48 @@ def test_reference_a_real_shell_finds_itself() -> None:
     def hit(pat: str) -> bool:
         return subprocess.run(["sh", "-c", f"pgrep -f '{pat}' >/dev/null"], check=False).returncode == 0
     assert hit("zz-selfmatch-probe") and not hit("[z]z-selfmatch-probe")
+
+
+SELF_KILLING_PKILL = [
+    "pkill -f 'python train.py'",
+    "pkill -f train.py; sleep 1; ./train.py &",
+    "pkill -9 -f replica-deploy.sh",
+    "pkill -fu martin 'bench run'",
+    "pkill --full -u martin bench",
+    "sudo pkill -f 'node server.js'",
+    "cd /tmp && pkill -f \"worker --id 3\" || true",
+    "bash -c 'pkill -f watcher.py'",
+    "pkill -f -- 'train.py'",
+]
+NOT_SELF_KILLING_PKILL = [
+    "pkill -f '[t]rain.py'",
+    "pkill -f 'replay-[1]hq|replay-[m]argin'",
+    "pkill train",  # no -f: the process name, not the command line
+    "pkill -u martin python3",
+    "kill 12345",
+    "pkill -f \"$PATTERN\"",  # only known at run time
+    "echo 'never run pkill -f train.py'",  # quoted, not run
+    "pkill -f 'a.(py|sh)'",  # this regex does not match its own text
+    "pkill -f '^python3 train\\.py$'",  # anchored: cannot match the shell's longer command line
+]
+
+
+@pytest.mark.parametrize("cmd", SELF_KILLING_PKILL)
+def test_self_killing_pkill_is_flagged(cmd: str) -> None:
+    assert check(cmd) == ["pkill-self-match"]
+
+
+@pytest.mark.parametrize("cmd", NOT_SELF_KILLING_PKILL)
+def test_pkill_that_cannot_match_its_shell_passes(cmd: str) -> None:
+    assert check(cmd) == []
+
+
+def test_reference_pkill_kills_its_own_shell() -> None:
+    """Ground truth: a compound `sh -c` running pkill -f dies by its own hand, unless the pattern is bracketed."""
+    import subprocess
+
+    def survives(pat: str) -> bool:
+        r = subprocess.run(["sh", "-c", f"pkill -f '{pat}'; echo alive"], capture_output=True, text=True,
+                           check=False)
+        return "alive" in r.stdout
+    assert not survives("zz-selfkill-probe") and survives("[z]z-selfkill-probe")
