@@ -2,6 +2,7 @@
 partial result and failure carries its cause."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -12,13 +13,15 @@ BLOCK = '{"policy_attributions": [{"name": "git-hard-reset"}]}'
 DELEGATE = '{"reason": "partial coverage"}'
 
 
-def fake_nah(tmp_path: Path, stalls: int, stderr: str) -> Path:
-    """A nah that delegates `stalls` times with `stderr`, then blocks; counts its runs in `runs`."""
+def fake_nah(tmp_path: Path, stalls: int, stderr: str, delay: float = 0) -> Path:
+    """A nah that takes `delay` s, delegates `stalls` times with `stderr`, then blocks; counts its runs
+    in `runs`."""
     runs = tmp_path / "runs"
     script = tmp_path / "nah"
     script.write_text(f"""#!/bin/sh
 cat >/dev/null
 n=$(cat {runs} 2>/dev/null || echo 0); n=$((n+1)); echo $n > {runs}
+sleep {delay}
 if [ $n -le {stalls} ]; then echo '{DELEGATE}'; echo '{stderr}' >&2; exit 2; fi
 echo '{BLOCK}'; exit 1
 """)
@@ -45,6 +48,16 @@ def test_retries_are_bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("HINTGUARD_NAH", str(fake_nah(tmp_path, 99, DEADLINE)))
     assert _nah.decide("git reset --hard", "/tmp") == ([], "deadline")
     assert runs(tmp_path) == _nah.DEADLINE_TRIES
+
+
+def test_retries_share_one_time_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Three slow deadline runs would take 1.8 s; together they get the 1 s of one call, and a retry
+    cut short leaves the partial answer nah already gave, not a failure."""
+    monkeypatch.setenv("HINTGUARD_NAH", str(fake_nah(tmp_path, 99, DEADLINE, delay=0.6)))
+    t = time.monotonic()
+    assert _nah.decide("ls *.py", "/tmp", timeout=1.0) == ([], "deadline")
+    assert time.monotonic() - t < 1.3
+    assert runs(tmp_path) == 2
 
 
 def test_deterministic_partial_is_not_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

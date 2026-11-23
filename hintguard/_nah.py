@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 
 # All 48 built-in nah guards except five that mostly flag routine coding-agent work, measured on
 # 10,000 real Claude Code Bash calls: pushes to main, cleanup of temporary directories,
@@ -31,10 +32,12 @@ def binary() -> str:
     return path
 
 
-# nah stops on a wall-clock deadline when the host is loaded and then delegates even plain
-# `git reset --hard` (13% of calls on a 4-core host at load 4.6, 2026-11-14). A rerun usually finishes
-# in time. Other partial results ("analysis is incomplete" on complex commands) are deterministic: a
-# rerun gives the same, so only the deadline case is retried.
+# nah 1.7.0 stopped on a wall-clock deadline when the host was loaded and then delegated even plain
+# `git reset --hard` (13% of calls on a 4-core host at load 4.6, 2026-11-14); a rerun usually finished
+# in time. Under nah 1.8.0 a deadline mostly comes from the command itself (a glob or grep -r over a
+# large tree): 93 of 95 such real calls hit it on all three runs (2026-11-23). So the retries share
+# the time budget of one call, and a retry cut short keeps the partial answer nah already gave. Other
+# partial results ("analysis is incomplete") are deterministic and never retried.
 DEADLINE = "deadline-exceeded"
 DEADLINE_TRIES = 3
 
@@ -43,10 +46,19 @@ def decide(command: str, cwd: str, timeout: float = 5.0) -> tuple[list[str], str
     """Names of the nah guards that block the command ([] when nah delegates), and why nah's analysis
     was partial when it delegated without a full check: "deadline" (its evaluation deadline ran out)
     or "incomplete" (it cannot fully analyze the command, e.g. a script it does not model); None for
-    a full check. A delegation on the deadline is retried, up to DEADLINE_TRIES runs in all."""
-    for _ in range(DEADLINE_TRIES):
-        guards, partial = _decide_once(command, cwd, timeout)
-        if guards or partial != "deadline":
+    a full check. A delegation on the deadline is retried, up to DEADLINE_TRIES runs in all, all
+    within `timeout` seconds; only a first run that gives no answer raises NahError."""
+    end = time.monotonic() + timeout
+    guards, partial = _decide_once(command, cwd, timeout)
+    for _ in range(DEADLINE_TRIES - 1):
+        left = end - time.monotonic()
+        if guards or partial != "deadline" or left <= 0:
+            break
+        try:
+            guards, partial = _decide_once(command, cwd, left)
+        except NahError as e:
+            if e.kind != "timeout":
+                raise
             break
     return guards, partial
 
