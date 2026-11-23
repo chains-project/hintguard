@@ -36,5 +36,5 @@ def test_every_nah_block_becomes_our_hint(monkeypatch: pytest.MonkeyPatch) -> No
             blocked += 1
             assert _cli.reason(hints).split(" Also:")[0] in lines
             assert len(_cli.reason(hints)) <= MAX_LEN
-    # nah v1.7.0 against a corpus from a later commit, outside its test fixtures: most still block.
+    # nah v1.8.0 against its own corpus (commit 5d6858a), run outside its test fixtures: most still block.
     assert blocked / len(cases) > 0.8, f"{blocked}/{len(cases)}"
