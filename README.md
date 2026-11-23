@@ -57,11 +57,11 @@ context, minus those of the five disabled guards) and checks that each block com
 
 ## Install
 
-Python 3.12 or later, and nah 1.7.0 on `PATH` (or in `~/.local/bin`, or named by `HINTGUARD_NAH`):
+Python 3.12 or later, and nah 1.8.0 on `PATH` (or in `~/.local/bin`, or named by `HINTGUARD_NAH`):
 
 ```console
 pip install git+https://github.com/chains-project/hintguard
-curl -fsSLO https://github.com/manuelschipper/nah/releases/download/v1.7.0/nah-x86_64-unknown-linux-musl.tar.gz
+curl -fsSLO https://github.com/manuelschipper/nah/releases/download/v1.8.0/nah-x86_64-unknown-linux-musl.tar.gz
 tar -xzf nah-x86_64-unknown-linux-musl.tar.gz nah && install -m 755 nah ~/.local/bin/nah
 hintguard setup        # enable the nah guards hintguard expects (43 of 48)
 ```
@@ -114,7 +114,7 @@ pip install -e '.[dev]'
 ruff check . && mypy hintguard && pytest
 ```
 
-Tests that need nah are skipped when it is not installed; CI installs nah 1.7.0.
+Tests that need nah are skipped when it is not installed; CI installs nah 1.8.0.
 
 ## License
 
