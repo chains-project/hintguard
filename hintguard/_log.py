@@ -2,8 +2,9 @@
 
 One JSON line per hooked Bash call in ~/.local/state/hintguard/decisions.jsonl (HINTGUARD_LOG
 overrides). No command text is logged: commands can hold secrets. A line holds the time, session and
-tool-call ids, the rules that fired, whether nah failed or only checked partially (its analysis
-incomplete, or stopped by its deadline), and the latency.
+tool-call ids, the rules that fired, whether nah failed and how (`error_kind`: unrunnable, timeout,
+exit), whether it only checked partially and why (`partial_cause`: incomplete, a command it cannot
+fully analyze; deadline, stopped by its evaluation deadline), and the latency.
 """
 from __future__ import annotations
 
@@ -20,11 +21,14 @@ def path() -> Path:
     return Path(os.environ.get("HINTGUARD_LOG") or Path.home() / ".local/state/hintguard/decisions.jsonl")
 
 
-def record(session: str | None, tool_use_id: str | None, rules: list[str], error: bool, ms: float,
-           partial: bool = False) -> None:
-    """Append one decision; never let logging break the hook."""
+def record(session: str | None, tool_use_id: str | None, rules: list[str], ms: float, *,
+           error_kind: str | None = None, partial_cause: str | None = None) -> None:
+    """Append one decision; never let logging break the hook. `error` and `partial` repeat whether
+    the kind and cause are set, for readers of logs older than these fields."""
     line = {"ts": datetime.now(UTC).isoformat(timespec="seconds"), "session": session,
-            "tool_use_id": tool_use_id, "rules": rules, "error": error, "partial": partial, "ms": round(ms, 1)}
+            "tool_use_id": tool_use_id, "rules": rules, "error": error_kind is not None,
+            "error_kind": error_kind, "partial": partial_cause is not None, "partial_cause": partial_cause,
+            "ms": round(ms, 1)}
     try:
         p = path()
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -80,6 +84,11 @@ def stats(since: timedelta, now: datetime | None = None) -> dict[str, object]:
         "denied": len(denied),
         "nah_errors": sum(1 for r in rows if r.get("error")),
         "nah_partial": sum(1 for r in rows if r.get("partial")),
+        # "unknown": a line from before hintguard 0.4.0, which logged neither.
+        "nah_errors_by_kind": dict(collections.Counter(
+            r.get("error_kind") or "unknown" for r in rows if r.get("error")).most_common()),
+        "nah_partial_by_cause": dict(collections.Counter(
+            r.get("partial_cause") or "unknown" for r in rows if r.get("partial")).most_common()),
         "rules": dict(collections.Counter(r["rules"][0] for r in denied).most_common()),
         "after_deny": dict(after),
         "latency_ms_p50": ms[len(ms) // 2] if ms else None,

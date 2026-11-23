@@ -94,8 +94,10 @@ command through (exit 1, which Claude Code treats as non-blocking); its own rule
 nah delegates because its evaluation deadline ran out (a loaded host), hintguard asks again, up to
 three runs in all; a partial check for other reasons (a command nah cannot fully analyze) is final. Each
 hooked call appends one line to `~/.local/state/hintguard/decisions.jsonl` (`HINTGUARD_LOG`
-overrides): time, session and tool-call ids, rules, latency, and whether nah checked only partially.
-The command text is never logged.
+overrides): time, session and tool-call ids, rules, latency, how nah failed (`error_kind`: `unrunnable`,
+`timeout`, `exit`), and why it checked only partially (`partial_cause`: `incomplete`, a command it
+cannot fully analyze, such as a script it does not model; `deadline`, its evaluation deadline ran out).
+`hintguard stats` counts both. The command text is never logged.
 
 ## Guard set
 

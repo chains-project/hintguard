@@ -14,7 +14,12 @@ DISABLED = ("git-protected-push", "fs-outside-workspace-delete", "git-history-re
 
 
 class NahError(RuntimeError):
-    pass
+    """nah gave no decision. kind: "unrunnable" (missing, or cannot be started), "timeout", or "exit"
+    (an exit status other than block or delegate)."""
+
+    def __init__(self, message: str, kind: str) -> None:
+        super().__init__(message)
+        self.kind = kind
 
 
 def binary() -> str:
@@ -22,7 +27,7 @@ def binary() -> str:
     local = os.path.expanduser("~/.local/bin/nah")
     path = os.environ.get("HINTGUARD_NAH") or shutil.which("nah") or (local if os.access(local, os.X_OK) else None)
     if not path:
-        raise NahError("nah not found on PATH (set HINTGUARD_NAH)")
+        raise NahError("nah not found on PATH (set HINTGUARD_NAH)", "unrunnable")
     return path
 
 
@@ -34,38 +39,41 @@ DEADLINE = "deadline-exceeded"
 DEADLINE_TRIES = 3
 
 
-def decide(command: str, cwd: str, timeout: float = 5.0) -> tuple[list[str], bool]:
-    """Names of the nah guards that block the command ([] when nah delegates), and whether nah's
-    analysis was partial (it delegated without a full check). A delegation caused by nah's own
-    evaluation deadline is retried, up to DEADLINE_TRIES runs in all."""
+def decide(command: str, cwd: str, timeout: float = 5.0) -> tuple[list[str], str | None]:
+    """Names of the nah guards that block the command ([] when nah delegates), and why nah's analysis
+    was partial when it delegated without a full check: "deadline" (its evaluation deadline ran out)
+    or "incomplete" (it cannot fully analyze the command, e.g. a script it does not model); None for
+    a full check. A delegation on the deadline is retried, up to DEADLINE_TRIES runs in all."""
     for _ in range(DEADLINE_TRIES):
-        guards, partial, deadline = _decide_once(command, cwd, timeout)
-        if guards or not deadline:
+        guards, partial = _decide_once(command, cwd, timeout)
+        if guards or partial != "deadline":
             break
     return guards, partial
 
 
-def _decide_once(command: str, cwd: str, timeout: float) -> tuple[list[str], bool, bool]:
-    """One `nah decide`: (blocking guards, partial, delegated on the evaluation deadline)."""
+def _decide_once(command: str, cwd: str, timeout: float) -> tuple[list[str], str | None]:
+    """One `nah decide`: (blocking guards, why the check was partial or None)."""
     request = json.dumps({"v": 1, "tool": "Bash", "input": {"command": command}, "cwd": cwd})
     try:
         p = subprocess.run([binary(), "decide"], input=request, capture_output=True, text=True,
                            timeout=timeout, check=False)
     except subprocess.TimeoutExpired as e:
-        raise NahError(f"nah decide timed out after {timeout}s") from e
+        raise NahError(f"nah decide timed out after {timeout}s", "timeout") from e
     except OSError as e:
-        raise NahError(f"cannot run nah: {e}") from e
+        raise NahError(f"cannot run nah: {e}", "unrunnable") from e
     if p.returncode == 2:
         try:
             partial = json.loads(p.stdout).get("reason") == "partial coverage"
         except json.JSONDecodeError:
             partial = False
-        return [], partial, partial and DEADLINE in p.stderr
+        if not partial:
+            return [], None
+        return [], "deadline" if DEADLINE in p.stderr else "incomplete"
     if p.returncode != 1:
-        raise NahError(f"nah decide exit {p.returncode}: {(p.stderr or p.stdout).strip()[:200]}")
+        raise NahError(f"nah decide exit {p.returncode}: {(p.stderr or p.stdout).strip()[:200]}", "exit")
     body = json.loads(p.stdout)
     names = [a["name"] for a in body.get("policy_attributions", []) if a.get("name")]
-    return names or ["nah"], False, False
+    return names or ["nah"], None
 
 
 def guards() -> dict[str, bool]:
