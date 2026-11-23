@@ -17,21 +17,21 @@ SHELL_TOOLS = ("Bash", "Monitor")
 
 def verdict(command: str, cwd: str) -> tuple[list[Hint], str | None]:
     """Hints for every rule the command breaks (own rules first), and a nah error if nah failed."""
-    hints, error, _ = verdict_full(command, cwd)
+    hints, error, _, _ = verdict_full(command, cwd)
     return hints, error
 
 
-def verdict_full(command: str, cwd: str) -> tuple[list[Hint], str | None, bool]:
-    """As verdict, plus whether nah's check was partial (it delegated without a full analysis)."""
+def verdict_full(command: str, cwd: str) -> tuple[list[Hint], str | None, str | None, str | None]:
+    """As verdict, plus the kind of nah's failure and why its check was partial (see _nah), each None
+    when it does not apply."""
     rules = _rules.check(command, cwd)
-    error = None
-    partial = False
+    error = error_kind = partial = None
     try:
         guards, partial = _nah.decide(command, cwd)
         rules += [g for g in guards if g not in rules]
     except _nah.NahError as e:
-        error = str(e)
-    return [hint(r) for r in rules], error, partial
+        error, error_kind = str(e), e.kind
+    return [hint(r) for r in rules], error, error_kind, partial
 
 
 def reason(hints: list[Hint]) -> str:
@@ -50,9 +50,9 @@ def cmd_hook(_: argparse.Namespace) -> int:
         return 0
     command = (payload.get("tool_input") or {}).get("command") or ""
     t = time.monotonic()
-    hints, error, partial = verdict_full(command, payload.get("cwd") or os.getcwd())
+    hints, error, error_kind, partial = verdict_full(command, payload.get("cwd") or os.getcwd())
     _log.record(payload.get("session_id"), payload.get("tool_use_id"), [h.rule for h in hints],
-                error is not None, (time.monotonic() - t) * 1000, partial)
+                (time.monotonic() - t) * 1000, error_kind=error_kind, partial_cause=partial)
     if error:
         print(f"hintguard: {error}", file=sys.stderr)
     if hints:
@@ -95,6 +95,10 @@ def cmd_stats(a: argparse.Namespace) -> int:
         print(f"{s['calls']} calls in {s['sessions']} sessions, {s['denied']} denied ({rules})")
         if after:
             print(f"after a deny: {after}")
+        if s["nah_errors"] or s["nah_partial"]:
+            kinds = ", ".join(f"{k} {v}" for k, v in s["nah_errors_by_kind"].items())  # type: ignore[attr-defined]
+            causes = ", ".join(f"{k} {v}" for k, v in s["nah_partial_by_cause"].items())  # type: ignore[attr-defined]
+            print(f"nah failed {s['nah_errors']} ({kinds or 'none'}), checked partially {s['nah_partial']} ({causes or 'none'})")
     return 0
 
 

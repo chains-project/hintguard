@@ -1,4 +1,5 @@
-"""nah's deadline: a delegation caused by it is retried; a deterministic partial result is not."""
+"""nah's deadline: a delegation caused by it is retried; a deterministic partial result is not. Each
+partial result and failure carries its cause."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,23 +37,48 @@ INCOMPLETE = "nah: effinterp analysis is incomplete; only established effects we
 @pytest.mark.parametrize("stalls", [1, 2])
 def test_deadline_delegation_is_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stalls: int) -> None:
     monkeypatch.setenv("HINTGUARD_NAH", str(fake_nah(tmp_path, stalls, DEADLINE)))
-    assert _nah.decide("git reset --hard", "/tmp") == (["git-hard-reset"], False)
+    assert _nah.decide("git reset --hard", "/tmp") == (["git-hard-reset"], None)
     assert runs(tmp_path) == stalls + 1
 
 
 def test_retries_are_bounded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HINTGUARD_NAH", str(fake_nah(tmp_path, 99, DEADLINE)))
-    assert _nah.decide("git reset --hard", "/tmp") == ([], True)
+    assert _nah.decide("git reset --hard", "/tmp") == ([], "deadline")
     assert runs(tmp_path) == _nah.DEADLINE_TRIES
 
 
 def test_deterministic_partial_is_not_retried(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HINTGUARD_NAH", str(fake_nah(tmp_path, 1, INCOMPLETE)))
-    assert _nah.decide("python3 x.py | tee y", "/tmp") == ([], True)
+    assert _nah.decide("python3 x.py | tee y", "/tmp") == ([], "incomplete")
     assert runs(tmp_path) == 1
 
 
 def test_a_block_is_one_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HINTGUARD_NAH", str(fake_nah(tmp_path, 0, DEADLINE)))
-    assert _nah.decide("git reset --hard", "/tmp") == (["git-hard-reset"], False)
+    assert _nah.decide("git reset --hard", "/tmp") == (["git-hard-reset"], None)
     assert runs(tmp_path) == 1
+
+
+def script(tmp_path: Path, body: str) -> Path:
+    nah = tmp_path / "nah"
+    nah.write_text("#!/bin/sh\ncat >/dev/null\n" + body + "\n")
+    nah.chmod(0o755)
+    return nah
+
+
+@pytest.mark.parametrize(("body", "kind"), [
+    ("sleep 5", "timeout"),
+    ("echo 'no valid decision' >&2; exit 3", "exit"),
+])
+def test_failure_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str, kind: str) -> None:
+    monkeypatch.setenv("HINTGUARD_NAH", str(script(tmp_path, body)))
+    with pytest.raises(_nah.NahError) as e:
+        _nah.decide("ls", "/tmp", timeout=0.5)
+    assert e.value.kind == kind
+
+
+def test_missing_nah_is_its_own_kind(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HINTGUARD_NAH", "/nonexistent/nah")
+    with pytest.raises(_nah.NahError) as e:
+        _nah.decide("ls", "/tmp")
+    assert e.value.kind == "unrunnable"

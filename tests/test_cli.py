@@ -89,3 +89,27 @@ def test_unknown_rule_still_denies_with_a_hint() -> None:
     from hintguard._hints import hint
     h = hint("guard-from-a-newer-nah")
     assert h.line().startswith("Denied (guard-from-a-newer-nah): Rewrite the command")
+
+
+def test_hook_logs_why_nah_failed(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("HINTGUARD_NAH", "/nonexistent/nah")
+    run(["hook"], payload("ls"), monkeypatch, capsys)
+    line = json.loads((tmp_path / "decisions.jsonl").read_text())
+    assert (line["error"], line["error_kind"], line["partial"], line["partial_cause"]) == (True, "unrunnable", False, None)
+
+
+def test_stats_splits_nah_failures_and_partial_checks(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    now = "2099-01-01T00:00:00+00:00"
+    rows = [{"error": True, "error_kind": "timeout"}, {"error": True, "error_kind": "timeout"},
+            {"partial": True, "partial_cause": "deadline"}, {"partial": True, "partial_cause": "incomplete"},
+            {"partial": True},  # written by hintguard < 0.4.0, which did not record the cause
+            {}]
+    (tmp_path / "decisions.jsonl").write_text("".join(
+        json.dumps({"ts": now, "session": "s", "rules": [], "ms": 1.0, **r}) + "\n" for r in rows))
+    _, out, _ = run(["stats", "--json"], "", monkeypatch, capsys)
+    s = json.loads(out)
+    assert (s["nah_errors"], s["nah_partial"]) == (2, 3)
+    assert s["nah_errors_by_kind"] == {"timeout": 2}
+    assert s["nah_partial_by_cause"] == {"deadline": 1, "incomplete": 1, "unknown": 1}
+    _, out, _ = run(["stats"], "", monkeypatch, capsys)
+    assert "nah failed 2 (timeout 2), checked partially 3 (deadline 1, incomplete 1, unknown 1)" in out
