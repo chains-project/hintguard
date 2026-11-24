@@ -1,0 +1,4 @@
+name = "secrets-print"
+match = ["secret-tool", "keyring", "nmcli"]
+protocol = "exec/v2"
+provenance = "agent"

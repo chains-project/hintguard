@@ -85,7 +85,7 @@ Codex, `~/.codex/hooks.json` (matcher `Bash`). Then trust the hook once in Codex
 hintguard check CMD [--cwd DIR] [--json]   # dry-run one command: the deny line, or nothing
 hintguard hook                              # PreToolUse hook: hook JSON on stdin, deny JSON on stdout
 hintguard hints [--json]                    # every rule with its hint
-hintguard setup [--dry-run]                 # align nah's enabled guards; prints only what changed
+hintguard setup [--dry-run]                 # align nah's guards, install hintguard's own; prints only what changed
 hintguard stats [--since 7d] [--json]       # local usage: calls, denies per rule, what the agent did next
 ```
 
@@ -106,6 +106,14 @@ All 48 nah guards except five that mostly flag routine agent work. On 10,000 rea
 calls, they flagged pushes to `main` (`git-protected-push`), cleanup of temporary directories
 (`fs-outside-workspace-delete`), `git pull --rebase` (`git-history-rewrite`), branch deletion
 (`git-ref-delete`) and service restarts (`sys-service-stop`). On the same calls hintguard denies 1.6%.
+
+Plus one custom nah guard shipped in [`hintguard/guards/`](hintguard/guards/), which `hintguard setup`
+copies into `~/.nah/guards/` and enables (nah asks again after every change to its bytes):
+
+- `secrets-print` denies `secret-tool lookup|search`, `keyring get` and `nmcli -s`/`--show-secrets`
+  when the value would reach the agent's transcript, which is sent to the model provider. Output
+  captured in a variable, redirected to a file, or piped into a hash or `wc` passes. It follows nah's
+  data flow, so `echo "$(secret-tool lookup ...)"` is a known miss.
 
 ## Development
 

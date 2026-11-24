@@ -7,6 +7,8 @@ import os
 import sys
 import time
 from importlib.metadata import version
+from importlib.resources import files
+from pathlib import Path
 
 from . import _log, _nah, _rules
 from ._hints import MAX_LEN, Hint, hint, table
@@ -102,14 +104,48 @@ def cmd_stats(a: argparse.Namespace) -> int:
     return 0
 
 
+NAH_GUARDS = Path.home() / ".nah" / "guards"
+
+
+def install_guards(dest: Path, dry_run: bool) -> list[str]:
+    """Copy each custom guard shipped in hintguard/guards/ into nah's user guard directory.
+    Returns the names whose bytes changed (new or updated): nah needs them enabled again."""
+    changed = []
+    for bundle in sorted(files("hintguard").joinpath("guards").iterdir(), key=lambda b: b.name):
+        if not bundle.is_dir():
+            continue
+        target = dest / bundle.name
+        sources = {f.name: f.read_bytes() for f in bundle.iterdir() if f.is_file()}
+        if all((target / n).is_file() and (target / n).read_bytes() == b for n, b in sources.items()):
+            continue
+        changed.append(bundle.name)
+        if dry_run:
+            continue
+        target.mkdir(parents=True, exist_ok=True)
+        for n, b in sources.items():
+            (target / n).write_bytes(b)
+            (target / n).chmod(0o700 if n == "run" else 0o600)
+    return changed
+
+
 def cmd_setup(a: argparse.Namespace) -> int:
-    """Enable every nah guard except DISABLED; print only what changed."""
+    """Enable every nah guard except DISABLED, install and enable hintguard's own guards;
+    print only what changed."""
+    suffix = " (dry run)" if a.dry_run else ""
     for name, on in _nah.guards().items():
         want = name not in _nah.DISABLED
         if on != want:
             if not a.dry_run:
                 _nah.set_guard(name, want)
-            print(f"{'enabled' if want else 'disabled'} {name}{' (dry run)' if a.dry_run else ''}")
+            print(f"{'enabled' if want else 'disabled'} {name}{suffix}")
+    for name in install_guards(NAH_GUARDS, a.dry_run):
+        print(f"installed {name}{suffix}")
+    status = _nah.custom_guards()
+    for bundle in files("hintguard").joinpath("guards").iterdir():
+        if bundle.is_dir() and status.get(bundle.name) != "active":
+            if not a.dry_run:
+                _nah.set_guard(bundle.name, True)
+            print(f"enabled {bundle.name}{suffix}")
     return 0
 
 

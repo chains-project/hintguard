@@ -100,6 +100,14 @@ def guards() -> dict[str, bool]:
     return out
 
 
+def custom_guards() -> dict[str, str]:
+    """Every custom guard nah discovered, with its status (inactive, active, needs-reapproval, ...)."""
+    p = subprocess.run([binary(), "guards"], capture_output=True, text=True, check=True)
+    lines = p.stdout.split("Custom:", 1)[-1].splitlines()
+    rows = [line.split("\t") for line in lines if "\t" in line]
+    return {r[0]: r[2] for r in rows[1:] if len(r) >= 3}  # rows[0] is the NAME/SCOPE/STATUS header
+
+
 def set_guard(name: str, enabled: bool) -> None:
     subprocess.run([binary(), "guard", "enable" if enabled else "disable", name],
                    capture_output=True, text=True, check=True, stdin=subprocess.DEVNULL)

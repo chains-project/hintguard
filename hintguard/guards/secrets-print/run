@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""nah guard secrets-print: block commands that print a stored secret into the agent's transcript.
+
+Covers `secret-tool lookup|search`, `keyring get` and `nmcli -s/--show-secrets`.
+Allowed: output captured or redirected (T=$(secret-tool lookup ...), > file), or piped
+into a hash or count (| sha256sum, | wc -c), which shows no value.
+Known gap: `echo "$(secret-tool lookup ...)"` prints the value but is not detected.
+"""
+import json
+import sys
+
+HASHES = {"sha256sum", "sha1sum", "sha512sum", "md5sum", "b2sum", "cksum", "wc"}
+
+
+def known(field):
+    return field.get("Known") if isinstance(field, dict) else None
+
+
+def prints_secret(argv):
+    prog = argv[0].rsplit("/", 1)[-1]
+    rest = argv[1:]
+    if prog == "secret-tool":
+        return bool(rest) and rest[0] in ("lookup", "search")
+    if prog == "keyring":
+        return "get" in rest
+    if prog == "nmcli":
+        return any(a == "-s" or a.startswith(("--show-s", "-show-s")) for a in rest)
+    return False
+
+
+def main():
+    ev = json.load(sys.stdin)["evidence"]
+    calls = {c["id"]: c for c in ev["calls"]}
+    top = {i for i, c in calls.items() if c["parent"] is None}
+    stdout = {}
+    for o in ev.get("occurrences") or []:
+        if o.get("port") == "Stdout":
+            stdout.setdefault(o["call"], []).append(o["id"])
+    edges = {}
+    for r in ev.get("relations") or []:
+        edges.setdefault(r["from"], []).append(r["to"])
+    sinks = {o for t in top for o in stdout.get(t, [])}
+
+    for cid, call in calls.items():
+        argv = known(call["arguments"])
+        if call["kind"] != "Argv" or not argv or not prints_secret(argv):
+            continue
+        siblings = [c for c in calls.values() if c["parent"] == call["parent"] and c["id"] != cid]
+        if any((known(c["identity"]) or "").rsplit("/", 1)[-1] in HASHES for c in siblings):
+            continue  # piped into a hash or count
+        seen = set(stdout.get(cid, []))
+        todo = list(seen)
+        while todo:
+            for nxt in edges.get(todo.pop(), []):
+                if nxt not in seen:
+                    seen.add(nxt)
+                    todo.append(nxt)
+        if seen & sinks:
+            return {"block": True, "reason": "prints a stored secret into the agent transcript"}
+    return {"abstain": True}
+
+
+print(json.dumps(main()))
