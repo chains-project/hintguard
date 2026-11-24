@@ -67,3 +67,18 @@ def test_secrets_print_verdict(blocked: bool, command: str) -> None:
     run = Path(str(files("hintguard").joinpath("guards", "secrets-print", "run")))
     out = subprocess.run(["python3", str(run)], input=request, capture_output=True, text=True, check=True)
     assert bool(json.loads(out.stdout).get("block")) == blocked
+
+
+def test_attribution_name_for_builtin_and_extension_guards() -> None:
+    assert _nah.attribution_name({"kind": "builtin", "name": "git-hard-reset"}) == "git-hard-reset"
+    ext = {"kind": "extension", "activation": {"identity": {"scope": "user", "name": "secrets-print"}}}
+    assert _nah.attribution_name(ext) == "secrets-print"  # the shape nah 1.8.0 emits for a custom guard
+    assert _nah.attribution_name({"kind": "extension"}) is None
+
+
+@needs_nah
+def test_custom_guard_deny_carries_its_own_hint() -> None:
+    if _nah.custom_guards().get("secrets-print") != "active":
+        pytest.skip("secrets-print not enabled on this host")
+    hints, _ = _cli.verdict("nmcli -s con show eduroam", "/tmp")
+    assert [h.rule for h in hints] == ["secrets-print"]

@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import time
+from typing import Any
 
 # All 48 built-in nah guards except five that mostly flag routine coding-agent work, measured on
 # 10,000 real Claude Code Bash calls: pushes to main, cleanup of temporary directories,
@@ -84,7 +85,7 @@ def _decide_once(command: str, cwd: str, timeout: float) -> tuple[list[str], str
     if p.returncode != 1:
         raise NahError(f"nah decide exit {p.returncode}: {(p.stderr or p.stdout).strip()[:200]}", "exit")
     body = json.loads(p.stdout)
-    names = [a["name"] for a in body.get("policy_attributions", []) if a.get("name")]
+    names = [n for a in body.get("policy_attributions", []) if (n := attribution_name(a))]
     return names or ["nah"], None
 
 
@@ -98,6 +99,13 @@ def guards() -> dict[str, bool]:
         elif line.startswith("Custom"):
             break
     return out
+
+
+def attribution_name(attribution: dict[str, Any]) -> str | None:
+    """The guard behind one policy attribution: built-ins carry `name`, custom (extension) guards
+    carry it under `activation.identity.name`."""
+    name = attribution.get("name") or attribution.get("activation", {}).get("identity", {}).get("name")
+    return name if isinstance(name, str) and name else None
 
 
 def custom_guards() -> dict[str, str]:
