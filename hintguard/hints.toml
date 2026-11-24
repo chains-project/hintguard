@@ -231,6 +231,11 @@ why = "it deletes a secret from a secret store."
 rewrite = "Keep the secret; drop this step and continue."
 why = "it permanently destroys a stored secret."
 
+[secrets-print]
+rewrite = "Keep the secret out of output: capture it in a variable, or pipe it into sha256sum or wc -c."
+why = "the transcript holding the value is sent to the model provider."
+example = "secret-tool lookup service login2 username kth | sha256sum"
+
 [secrets-store-read]
 rewrite = "Check that the secret exists without printing its value, for example by listing names."
 why = "it prints a secret value."
