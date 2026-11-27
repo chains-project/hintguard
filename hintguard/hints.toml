@@ -26,6 +26,11 @@ rewrite = "Run git submodule status, stage intended pointers by path (git add/rm
 why = "the commit would record or drop a submodule pointer by accident."
 example = "git add src/a.py && git commit -m 'fix a'"
 
+[commit-shell-errexit]
+rewrite = "Run hintguard lint on the staged scripts; call each flagged function on its own line, not as a condition."
+why = "set -e is off inside such a call: failures pass silently."
+example = "fetch_package \"$url\"   # not: fetch_package \"$url\" || exit 1"
+
 [db-destroy]
 rewrite = "Work on a copy: dump the data first, or use a filtered DELETE, a new table, or a local database."
 why = "it destroys live database data."

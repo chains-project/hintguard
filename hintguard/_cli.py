@@ -1,4 +1,5 @@
-"""hintguard command line: a PreToolUse hook that denies risky shell commands with a rewrite hint."""
+"""hintguard command line: a PreToolUse hook that denies risky shell commands with a rewrite hint,
+and a PostToolUse hook that sends an agent back to a shell script it wrote that switches off set -e."""
 from __future__ import annotations
 
 import argparse
@@ -10,11 +11,13 @@ from importlib.metadata import version
 from importlib.resources import files
 from pathlib import Path
 
-from . import _log, _nah, _rules
+from . import _errexit, _log, _nah, _rules
 from ._hints import MAX_LEN, Hint, hint, table
 
 # Tools whose input `command` runs in a shell: Bash, and Monitor (a background shell watch).
 SHELL_TOOLS = ("Bash", "Monitor")
+# Tools that write a file named by `tool_input.file_path`.
+WRITE_TOOLS = ("Write", "Edit", "MultiEdit")
 
 
 def verdict(command: str, cwd: str) -> tuple[list[Hint], str | None]:
@@ -75,6 +78,31 @@ def cmd_check(a: argparse.Namespace) -> int:
     elif hints:
         print(reason(hints))
     return 1 if error else 0
+
+
+def cmd_lint_hook(_: argparse.Namespace) -> int:
+    """PostToolUse: block (send the agent back) when the file just written is a shell script with
+    an SC2310 finding; silent otherwise."""
+    payload = json.load(sys.stdin)
+    if payload.get("tool_name") not in WRITE_TOOLS:
+        return 0
+    path = (payload.get("tool_input") or {}).get("file_path") or ""
+    found = _errexit.file_findings(path) if path else []
+    if found:
+        reason = (f"{path} switches off set -e (shellcheck SC2310): " + "; ".join(found[:5])
+                  + f". {_errexit.FIX}")
+        print(json.dumps({"decision": "block", "reason": reason}))
+    return 0
+
+
+def cmd_lint(a: argparse.Namespace) -> int:
+    """Print `FILE: line N: message` for every SC2310 finding; exit 1 if any."""
+    bad = False
+    for path in a.files:
+        for f in _errexit.file_findings(path):
+            print(f"{path}: {f}")
+            bad = True
+    return 1 if bad else 0
 
 
 def cmd_hints(a: argparse.Namespace) -> int:
@@ -160,6 +188,11 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--cwd", default=".")
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_check)
+    s = sub.add_parser("lint-hook", help="PostToolUse hook: block a written shell script that switches off set -e")
+    s.set_defaults(fn=cmd_lint_hook)
+    s = sub.add_parser("lint", help="shell scripts that switch off set -e (SC2310); exit 1 if any")
+    s.add_argument("files", nargs="+")
+    s.set_defaults(fn=cmd_lint)
     s = sub.add_parser("hints", help="list every rule with its hint")
     s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_hints)

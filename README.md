@@ -34,6 +34,14 @@ rewrite instruction for the agent.
   `pkill -f job.sh` (or `kill $(pgrep -f job.sh)`) that kills that same shell. One rule reads the repository: before a `git commit`
   it runs `git submodule status` and denies a commit that would record a moved submodule checkout
   (`commit -a`, `add -A`) or the pointer deletion of a lost submodule directory still in `.gitmodules`.
+  Another denies a `git commit` that records a shell script switching off `set -e` (see below).
+- **Shell scripts that switch off `set -e`.** Under `set -e`, a function called as the condition of
+  `if`/`while`, after `!`, or in an `&&`/`||` list runs its whole body with errexit suspended (POSIX):
+  its failures pass silently. shellcheck's optional check SC2310 flags such calls. hintguard runs it on
+  every shell script an agent writes (`hintguard lint-hook`, a PostToolUse hook on `Write|Edit|MultiEdit`,
+  which sends the agent back with the line numbers and the fix) and on the staged scripts of a
+  `git commit` (rule `commit-shell-errexit`, which also covers scripts written through the shell). Without
+  shellcheck on `PATH`, both are silent.
 - **Wording.** [`hintguard/hints.toml`](hintguard/hints.toml) has one hint per nah guard and per own rule:
   a rewrite instruction, a short reason, and an example command that follows the hint.
 - **Output.** A deny is the standard PreToolUse JSON (`permissionDecision: deny`), which Claude Code and
@@ -69,8 +77,11 @@ hintguard setup        # enable the nah guards hintguard expects (43 of 48)
 Claude Code, `~/.claude/settings.json`:
 
 ```json
-{"hooks": {"PreToolUse": [{"matcher": "Bash|Monitor", "hooks": [{"type": "command", "command": "hintguard hook"}]}]}}
+{"hooks": {"PreToolUse": [{"matcher": "Bash|Monitor", "hooks": [{"type": "command", "command": "hintguard hook"}]}],
+           "PostToolUse": [{"matcher": "Write|Edit|MultiEdit", "hooks": [{"type": "command", "command": "hintguard lint-hook"}]}]}}
 ```
+
+The `set -e` checks need [shellcheck](https://www.shellcheck.net/) 0.8 or later on `PATH`.
 
 `Monitor` (a background shell watch) runs a shell command too; hintguard checks both tools.
 Codex, `~/.codex/hooks.json` (matcher `Bash`). Then trust the hook once in Codex's `/hooks` view:
@@ -84,6 +95,8 @@ Codex, `~/.codex/hooks.json` (matcher `Bash`). Then trust the hook once in Codex
 ```console
 hintguard check CMD [--cwd DIR] [--json]   # dry-run one command: the deny line, or nothing
 hintguard hook                              # PreToolUse hook: hook JSON on stdin, deny JSON on stdout
+hintguard lint-hook                         # PostToolUse hook: blocks a written script that switches off set -e
+hintguard lint FILE...                      # FILE: line N: message per SC2310 finding; exit 1 if any
 hintguard hints [--json]                    # every rule with its hint
 hintguard setup [--dry-run]                 # align nah's guards, install hintguard's own; prints only what changed
 hintguard stats [--since 7d] [--json]       # local usage: calls, denies per rule, what the agent did next

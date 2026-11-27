@@ -2,7 +2,8 @@
 
 They cover what nah cannot see: its custom guards never receive commands with unresolved expansions,
 it has no notion of a wait that can never end or of a pkill that kills its own shell, and it never
-looks at the repository a `git commit` runs in (submodule pointers, via `git submodule status`).
+looks at the repository a `git commit` runs in (submodule pointers, via `git submodule status`; shell
+scripts that switch off `set -e`, via shellcheck, see _errexit).
 """
 from __future__ import annotations
 
@@ -10,10 +11,13 @@ import os
 import re
 import subprocess
 from collections.abc import Iterator
+from pathlib import Path
 from typing import NamedTuple
 
 import tree_sitter_bash
 from tree_sitter import Language, Node, Parser
+
+from . import _errexit
 
 _PARSER = Parser(Language(tree_sitter_bash.language()))
 
@@ -344,7 +348,41 @@ def submodule_drift(root: Node, cwd: str) -> bool:
     return any(submodule_problems(c.cwd, c.all) for c in _commits(root, cwd))
 
 
-REPO_RULES = {"submodule-drift": submodule_drift}
+def _staged_text(root: str, path: str) -> str | None:
+    """The content `path` has in the index of the repository at root; None if unreadable."""
+    try:
+        r = subprocess.run(["git", "-C", root, "show", f":{path}"], capture_output=True, timeout=10,
+                           check=False, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return r.stdout.decode(errors="replace") if r.returncode == 0 else None
+
+
+def errexit_problems(cwd: str, commit_all: bool) -> list[str]:
+    """`<path>: line N: message` for every SC2310 finding in the shell scripts a `git commit` in cwd
+    records: the staged content, and with commit_all the working-tree content of modified tracked files."""
+    if not os.path.isdir(cwd) or not (top := _git(cwd, "rev-parse", "--show-toplevel")):
+        return []
+    root = top[0]
+    texts: dict[str, str] = {}
+    for path in _git(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z") or []:
+        if (text := _staged_text(root, path)) is not None:
+            texts[path] = text
+    if commit_all:
+        for path in _git(root, "diff", "--name-only", "--diff-filter=ACMR", "-z") or []:
+            try:
+                texts[path] = (Path(root) / path).read_text(errors="replace")
+            except OSError:
+                pass
+    return [f"{path}: {f}" for path, text in sorted(texts.items())
+            if _errexit.is_shell_script(path, text) for f in _errexit.findings(text)]
+
+
+def commit_shell_errexit(root: Node, cwd: str) -> bool:
+    return any(errexit_problems(c.cwd, c.all) for c in _commits(root, cwd))
+
+
+REPO_RULES = {"submodule-drift": submodule_drift, "commit-shell-errexit": commit_shell_errexit}
 
 
 def check(command: str, cwd: str | None = None) -> list[str]:
