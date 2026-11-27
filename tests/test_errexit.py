@@ -104,6 +104,7 @@ def test_hook_blocks_a_written_script(tmp_path: Path, monkeypatch: pytest.Monkey
     out = json.loads(run_hook(monkeypatch, capsys, {"tool_name": "Edit",
                                                      "tool_input": {"file_path": str(tmp_path / "run.sh")}}))
     assert out["decision"] == "block" and "line 7" in out["reason"] and "own line" in out["reason"]
+    assert ".." not in out["reason"]
 
 
 @pytest.mark.parametrize("payload", [

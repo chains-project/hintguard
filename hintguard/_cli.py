@@ -97,7 +97,8 @@ def cmd_lint_hook(_: argparse.Namespace) -> int:
     reasons = []
     for path in paths:
         if path and (found := _errexit.file_findings(path)):
-            reasons.append(f"{path} switches off set -e (shellcheck SC2310): " + "; ".join(found[:5]) + ".")
+            text = "; ".join(f.rstrip(".") for f in found[:5])
+            reasons.append(f"{path} switches off set -e (shellcheck SC2310): {text}.")
     if reasons:
         print(json.dumps({"decision": "block", "reason": " ".join(reasons) + f" {_errexit.FIX}"}))
     return 0
