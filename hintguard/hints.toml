@@ -27,7 +27,7 @@ why = "the commit would record or drop a submodule pointer by accident."
 example = "git add src/a.py && git commit -m 'fix a'"
 
 [commit-shell-errexit]
-rewrite = "Run hintguard lint on the staged scripts; call each flagged function on its own line, not as a condition."
+rewrite = "Run hintguard lint --staged; call each flagged function on its own line, then git add the script."
 why = "set -e is off inside such a call: failures pass silently."
 example = "fetch_package \"$url\"   # not: fetch_package \"$url\" || exit 1"
 

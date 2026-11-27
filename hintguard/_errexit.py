@@ -25,6 +25,15 @@ FIX = ("Call the function on its own line; to handle its failure, use an ERR tra
        "a status variable set inside it.")
 
 
+# Codex's apply_patch: `*** Add File: PATH`, `*** Update File: PATH`, `*** Move to: PATH` (relative to cwd).
+_PATCH_PATH = re.compile(r"^\*\*\* (?:Add File|Update File|Move to): (.+?)\s*$", re.MULTILINE)
+
+
+def patched_paths(patch: str) -> list[str]:
+    """The files an apply_patch patch leaves on disk (added, updated, or moved to), in order."""
+    return list(dict.fromkeys(_PATCH_PATH.findall(patch)))
+
+
 def is_shell_script(name: str, text: str) -> bool:
     return Path(name).suffix in SUFFIXES or bool(_SHEBANG.match(text))
 

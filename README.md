@@ -38,8 +38,8 @@ rewrite instruction for the agent.
 - **Shell scripts that switch off `set -e`.** Under `set -e`, a function called as the condition of
   `if`/`while`, after `!`, or in an `&&`/`||` list runs its whole body with errexit suspended (POSIX):
   its failures pass silently. shellcheck's optional check SC2310 flags such calls. hintguard runs it on
-  every shell script an agent writes (`hintguard lint-hook`, a PostToolUse hook on `Write|Edit|MultiEdit`,
-  which sends the agent back with the line numbers and the fix) and on the staged scripts of a
+  every shell script an agent writes (`hintguard lint-hook`, a PostToolUse hook on Claude Code's
+  `Write|Edit|MultiEdit` and Codex's `apply_patch`, which sends the agent back with the line numbers and the fix) and on the staged scripts of a
   `git commit` (rule `commit-shell-errexit`, which also covers scripts written through the shell). Without
   shellcheck on `PATH`, both are silent.
 - **Wording.** [`hintguard/hints.toml`](hintguard/hints.toml) has one hint per nah guard and per own rule:
@@ -87,7 +87,8 @@ The `set -e` checks need [shellcheck](https://www.shellcheck.net/) 0.8 or later 
 Codex, `~/.codex/hooks.json` (matcher `Bash`). Then trust the hook once in Codex's `/hooks` view:
 
 ```json
-{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "/absolute/path/to/hintguard hook"}]}]}}
+{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "/absolute/path/to/hintguard hook"}]}],
+           "PostToolUse": [{"matcher": "apply_patch", "hooks": [{"type": "command", "command": "/absolute/path/to/hintguard lint-hook"}]}]}}
 ```
 
 ## Usage
@@ -97,6 +98,7 @@ hintguard check CMD [--cwd DIR] [--json]   # dry-run one command: the deny line,
 hintguard hook                              # PreToolUse hook: hook JSON on stdin, deny JSON on stdout
 hintguard lint-hook                         # PostToolUse hook: blocks a written script that switches off set -e
 hintguard lint FILE...                      # FILE: line N: message per SC2310 finding; exit 1 if any
+hintguard lint --staged [--all] [--cwd DIR] # the same for what a git commit would record (the index)
 hintguard hints [--json]                    # every rule with its hint
 hintguard setup [--dry-run]                 # align nah's guards, install hintguard's own; prints only what changed
 hintguard stats [--since 7d] [--json]       # local usage: calls, denies per rule, what the agent did next

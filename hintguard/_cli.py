@@ -16,8 +16,10 @@ from ._hints import MAX_LEN, Hint, hint, table
 
 # Tools whose input `command` runs in a shell: Bash, and Monitor (a background shell watch).
 SHELL_TOOLS = ("Bash", "Monitor")
-# Tools that write a file named by `tool_input.file_path`.
+# Tools that write a file named by `tool_input.file_path` (Claude Code), and Codex's patch tool, whose
+# `tool_input.command` is the patch text.
 WRITE_TOOLS = ("Write", "Edit", "MultiEdit")
+PATCH_TOOL = "apply_patch"
 
 
 def verdict(command: str, cwd: str) -> tuple[list[Hint], str | None]:
@@ -84,25 +86,39 @@ def cmd_lint_hook(_: argparse.Namespace) -> int:
     """PostToolUse: block (send the agent back) when the file just written is a shell script with
     an SC2310 finding; silent otherwise."""
     payload = json.load(sys.stdin)
-    if payload.get("tool_name") not in WRITE_TOOLS:
+    tool, tool_input = payload.get("tool_name"), payload.get("tool_input") or {}
+    if tool in WRITE_TOOLS:
+        paths = [tool_input.get("file_path") or ""]
+    elif tool == PATCH_TOOL:
+        cwd = payload.get("cwd") or os.getcwd()
+        paths = [os.path.join(cwd, p) for p in _errexit.patched_paths(str(tool_input.get("command") or ""))]
+    else:
         return 0
-    path = (payload.get("tool_input") or {}).get("file_path") or ""
-    found = _errexit.file_findings(path) if path else []
-    if found:
-        reason = (f"{path} switches off set -e (shellcheck SC2310): " + "; ".join(found[:5])
-                  + f". {_errexit.FIX}")
-        print(json.dumps({"decision": "block", "reason": reason}))
+    reasons = []
+    for path in paths:
+        if path and (found := _errexit.file_findings(path)):
+            reasons.append(f"{path} switches off set -e (shellcheck SC2310): " + "; ".join(found[:5]) + ".")
+    if reasons:
+        print(json.dumps({"decision": "block", "reason": " ".join(reasons) + f" {_errexit.FIX}"}))
     return 0
 
 
 def cmd_lint(a: argparse.Namespace) -> int:
-    """Print `FILE: line N: message` for every SC2310 finding; exit 1 if any."""
-    bad = False
-    for path in a.files:
-        for f in _errexit.file_findings(path):
-            print(f"{path}: {f}")
-            bad = True
-    return 1 if bad else 0
+    """Print `FILE: line N: message` for every SC2310 finding; exit 1 if any. With --staged, check
+    what a `git commit` in --cwd would record, as the commit-shell-errexit rule does."""
+    if a.staged:
+        if a.files:
+            print("hintguard: lint --staged takes no FILE", file=sys.stderr)
+            return 2
+        lines = _rules.errexit_problems(os.path.abspath(a.cwd), a.all)
+    elif not a.files:
+        print("hintguard: lint needs FILE... or --staged", file=sys.stderr)
+        return 2
+    else:
+        lines = [f"{path}: {f}" for path in a.files for f in _errexit.file_findings(path)]
+    for line in lines:
+        print(line)
+    return 1 if lines else 0
 
 
 def cmd_hints(a: argparse.Namespace) -> int:
@@ -191,7 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("lint-hook", help="PostToolUse hook: block a written shell script that switches off set -e")
     s.set_defaults(fn=cmd_lint_hook)
     s = sub.add_parser("lint", help="shell scripts that switch off set -e (SC2310); exit 1 if any")
-    s.add_argument("files", nargs="+")
+    s.add_argument("files", nargs="*")
+    s.add_argument("--staged", action="store_true", help="the scripts a git commit in --cwd would record")
+    s.add_argument("--all", action="store_true", help="with --staged: as git commit -a")
+    s.add_argument("--cwd", default=".")
     s.set_defaults(fn=cmd_lint)
     s = sub.add_parser("hints", help="list every rule with its hint")
     s.add_argument("--json", action="store_true")

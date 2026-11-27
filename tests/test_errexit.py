@@ -165,3 +165,49 @@ def test_not_a_commit(repo: Path) -> None:
     (repo / "run.sh").write_text(REAL)
     git(repo, "add", "run.sh")
     assert "commit-shell-errexit" not in check("git status", str(repo))
+
+
+# The payload Codex 0.171.0 sends to a PostToolUse hook after an apply_patch (captured 2026-11-27).
+def codex_payload(cwd: Path, patch: str) -> dict[str, object]:
+    return {"hook_event_name": "PostToolUse", "tool_name": "apply_patch", "cwd": str(cwd),
+            "tool_input": {"command": patch}, "tool_response": "Exit code: 0\n"}
+
+
+def test_patched_paths() -> None:
+    patch = ("*** Begin Patch\n*** Add File: a.sh\n+x\n*** Update File: b/c.sh\n@@\n-x\n+y\n"
+             "*** Update File: old.sh\n*** Move to: new.sh\n*** Delete File: gone.sh\n*** End Patch")
+    assert _errexit.patched_paths(patch) == ["a.sh", "b/c.sh", "old.sh", "new.sh"]
+
+
+def test_hook_blocks_a_codex_patch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                   capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "run.sh").write_text(REAL)
+    out = json.loads(run_hook(monkeypatch, capsys, codex_payload(
+        tmp_path, "*** Begin Patch\n*** Add File: run.sh\n+...\n*** End Patch")))
+    assert out["decision"] == "block" and f"{tmp_path / 'run.sh'} switches off set -e" in out["reason"]
+
+
+def test_hook_silent_on_a_clean_codex_patch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                            capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "t.sh").write_text("#!/bin/bash\necho hi\n")
+    assert run_hook(monkeypatch, capsys, codex_payload(
+        tmp_path, "*** Begin Patch\n*** Add File: t.sh\n+#!/bin/bash\n+echo hi\n*** End Patch")) == ""
+
+
+def test_lint_staged_follows_the_index(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The deny hint's loop: lint --staged shows the finding until the fix is staged, as the commit rule does."""
+    (repo / "run.sh").write_text(REAL)
+    git(repo, "add", "run.sh")
+    (repo / "run.sh").write_text(HEAD + "f\n")  # fixed on disk, not staged
+    assert _cli.main(["lint", "--staged", "--cwd", str(repo)]) == 1
+    assert capsys.readouterr().out.startswith("run.sh: line 7:")
+    assert _cli.main(["lint", str(repo / "run.sh")]) == 0  # the working tree is clean: why --staged exists
+    capsys.readouterr()
+    git(repo, "add", "run.sh")
+    assert _cli.main(["lint", "--staged", "--cwd", str(repo)]) == 0
+    assert "commit-shell-errexit" not in check("git commit -m x", str(repo))
+
+
+def test_lint_argument_errors(capsys: pytest.CaptureFixture[str]) -> None:
+    assert _cli.main(["lint"]) == 2
+    assert _cli.main(["lint", "--staged", "x.sh"]) == 2
