@@ -81,7 +81,8 @@ Claude Code, `~/.claude/settings.json`:
            "PostToolUse": [{"matcher": "Write|Edit|MultiEdit", "hooks": [{"type": "command", "command": "hintguard lint-hook"}]}]}}
 ```
 
-The `set -e` checks need [shellcheck](https://www.shellcheck.net/) 0.8 or later on `PATH`.
+The `set -e` checks need [shellcheck](https://www.shellcheck.net/) 0.8 or later, on `PATH`, in
+`~/.local/bin`, or named by `HINTGUARD_SHELLCHECK`.
 
 `Monitor` (a background shell watch) runs a shell command too; hintguard checks both tools.
 Codex, `~/.codex/hooks.json` (matcher `Bash`). Then trust the hook once in Codex's `/hooks` view:

@@ -12,6 +12,7 @@ of such a script) and `hintguard lint`. Without shellcheck everything here is si
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -38,9 +39,17 @@ def is_shell_script(name: str, text: str) -> bool:
     return Path(name).suffix in SUFFIXES or bool(_SHEBANG.match(text))
 
 
+def shellcheck() -> str | None:
+    """HINTGUARD_SHELLCHECK, else shellcheck on PATH, else ~/.local/bin/shellcheck (hooks may run with a
+    PATH that lacks it, as for nah)."""
+    local = os.path.expanduser("~/.local/bin/shellcheck")
+    return (os.environ.get("HINTGUARD_SHELLCHECK") or shutil.which("shellcheck")
+            or (local if os.access(local, os.X_OK) else None))
+
+
 def findings(text: str) -> list[str]:
     """`line N: message` for every SC2310 finding in a shell script's text; [] without shellcheck."""
-    exe = shutil.which("shellcheck")
+    exe = shellcheck()
     if exe is None:
         return []
     cmd = [exe, "-f", "json", "-o", "check-set-e-suppressed", "-i", f"SC{CODE}"]

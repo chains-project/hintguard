@@ -74,8 +74,22 @@ def test_file_findings_skip_non_shell(tmp_path: Path) -> None:
 
 
 def test_without_shellcheck_silent(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(_errexit.shutil, "which", lambda _: None)
+    monkeypatch.setattr(_errexit, "shellcheck", lambda: None)
     assert _errexit.findings(REAL) == []
+
+
+def test_shellcheck_lookup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("HINTGUARD_SHELLCHECK", raising=False)
+    monkeypatch.setattr(_errexit.shutil, "which", lambda _: None)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert _errexit.shellcheck() is None
+    local = tmp_path / ".local" / "bin" / "shellcheck"
+    local.parent.mkdir(parents=True)
+    local.write_text("#!/bin/sh\n")
+    local.chmod(0o755)
+    assert _errexit.shellcheck() == str(local)
+    monkeypatch.setenv("HINTGUARD_SHELLCHECK", "/opt/sc")
+    assert _errexit.shellcheck() == "/opt/sc"
 
 
 def run_hook(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], payload: dict[str, object]) -> str:
